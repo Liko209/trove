@@ -1,0 +1,76 @@
+appId: app.trove.local
+productName: Trove
+copyright: Copyright © 2026 Trove
+
+directories:
+  buildResources: build
+  output: dist-electron
+
+# What goes INSIDE app.asar.
+# electron-builder defaults to all production dependencies (filtered from
+# package.json). We add explicit excludes for things shipped via extraResources
+# or that aren't needed at runtime.
+files:
+  - "electron/.dist/**/*"
+  - "package.json"
+  - "!{src,ui,dist-app,scripts,resources,build,dist-electron}/**"
+  - "!**/*.{ts,tsx,map}"
+  - "!**/node_modules/**/{CHANGELOG.md,README,readme}*"
+  - "!**/node_modules/.bin"
+  - "!**/node_modules/**/{test,tests,__tests__,benchmark,benchmarks}/**"
+
+# Native modules unpacked from asar so dlopen() can find them.
+asar: true
+asarUnpack:
+  - "node_modules/better-sqlite3/**/*"
+  - "node_modules/sqlite-vec/**/*"
+
+# Stuff copied to Contents/Resources/ (NOT inside asar).
+# Layout: Resources/app/admin/, Resources/app/mcp/, Resources/app/ui-dist/, Resources/bin/
+extraResources:
+  - from: resources/bin
+    to: bin
+    filter:
+      - "**/*"
+  - from: dist-app
+    to: app
+    filter:
+      - "**/*"
+  - from: ui/dist
+    to: app/ui-dist
+    filter:
+      - "**/*"
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  title: "${productName}"
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# Auto-update channel. electron-updater will fetch latest-mac.yml from GitHub
+# Releases and download the matching DMG. Until the GitHub repo + first
+# release exist, this just makes the updater a no-op on startup.
+#
+# To go live:
+#   1. Push to GitHub (set owner/repo here)
+#   2. `GH_TOKEN=... npx electron-builder --mac --arm64 --publish always`
+#   3. Bump version in package.json before each release
+publish:
+  - provider: github
+    owner: Liko209
+    repo: trove
+    releaseType: release

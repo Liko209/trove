@@ -1,0 +1,45 @@
+{
+  "name": "local-kb-demo",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "main": "electron/.dist/main/index.js",
+  "scripts": {
+    "ingest": "TROVE_CLI=ingest tsx src/ingest.ts",
+    "scan": "tsx src/scan.ts",
+    "server": "tsx src/server.ts",
+    "query": "tsx src/query.ts",
+    "admin": "tsx src/admin.ts",
+    "ui:dev": "cd ui && npm run dev",
+    "ui:build": "cd ui && npm run build",
+    "ui": "npm run ui:build && npm run admin",
+    "electron:dev": "electron-vite dev",
+    "electron:build": "npm run ui:build && electron-vite build",
+    "electron:preview": "electron-vite preview",
+    "build:admin": "node scripts/build-admin.mjs",
+    "vendor:llama": "node scripts/vendor-llama.mjs",
+    "rebuild": "electron-rebuild",
+    "app:dist": "npm run build:admin && npm run electron:build && electron-builder"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.10.0",
+    "electron-updater": "^6.8.3",
+    "express": "^5.2.1",
+    "pdf-parse": "^2.4.5",
+    "sqlite-vec": "^0.1.9"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
+    "electron": "^41.7.1",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "vite-plugin-static-copy": "^4.1.0"
+  }
+}

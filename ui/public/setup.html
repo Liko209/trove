@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trove — Setup</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+          "Helvetica Neue", Helvetica, Arial, sans-serif;
+        background: #fafaf9;
+        color: #1c1917;
+        -webkit-font-smoothing: antialiased;
+      }
+      body { display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+      .card {
+        width: 100%;
+        max-width: 640px;
+        background: #fff;
+        border: 1px solid #e7e5e4;
+        border-radius: 16px;
+        padding: 40px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+      h1 { font-size: 24px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.01em; }
+      h2 { font-size: 14px; font-weight: 600; margin: 0 0 14px; letter-spacing: -0.005em; color: #292524; }
+      .sub { color: #78716c; font-size: 13.5px; margin: 0 0 28px; line-height: 1.55; }
+      .model-row {
+        padding: 18px 20px;
+        border: 1px solid #e7e5e4;
+        border-radius: 10px;
+        margin-bottom: 12px;
+      }
+      .model-row + .model-row { margin-top: 0; }
+      .row-head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .row-head .name {
+        font-weight: 500;
+        font-size: 14px;
+      }
+      .row-head .size {
+        margin-left: auto;
+        font-size: 12px;
+        color: #a8a29e;
+        font-variant-numeric: tabular-nums;
+      }
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        border-radius: 9999px;
+        background: #f5f5f4;
+        color: #57534e;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #a8a29e;
+      }
+      .dot.ready { background: #10b981; }
+      .dot.running { background: #10b981; }
+      .dot.error { background: #f43f5e; }
+      .progress-bar {
+        height: 6px;
+        background: #f5f5f4;
+        border-radius: 9999px;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .progress-bar .fill {
+        height: 100%;
+        background: #1c1917;
+        transition: width 0.2s;
+      }
+      .meta {
+        margin-top: 6px;
+        font-size: 11.5px;
+        color: #78716c;
+        display: flex;
+        gap: 10px;
+        font-variant-numeric: tabular-nums;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+        border: 1px solid #d6d3d1;
+        background: #fff;
+        padding: 7px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #292524;
+        transition: background 0.1s;
+      }
+      button:hover:not(:disabled) { background: #f5f5f4; }
+      button.primary {
+        background: #1c1917;
+        color: #fff;
+        border-color: #1c1917;
+      }
+      button.primary:hover:not(:disabled) { background: #292524; }
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .err {
+        margin-top: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: #be123c;
+        background: #fff1f2;
+        border-radius: 6px;
+      }
+      .footer {
+        margin-top: 32px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .footer .ready-summary {
+        margin-left: auto;
+        font-size: 12.5px;
+        color: #78716c;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Set up Trove</h1>
+      <p class="sub">
+        Trove uses small open-source AI models to make your documents searchable —
+        all on this Mac. Download once, then everything stays local.
+      </p>
+
+      <h2>Models</h2>
+      <div id="models"></div>
+
+      <div id="err-global" class="err" hidden></div>
+
+      <div class="footer">
+        <span id="hint" class="ready-summary">Click "Download" on each model above.</span>
+        <button id="continue" class="primary" disabled>Continue →</button>
+      </div>
+    </main>
+
+    <script>
+      const t = /** @type {any} */ (window).trove;
+      if (!t) {
+        document.body.innerHTML =
+          '<div class="card"><h1>Setup unavailable</h1><p class="sub">The setup bridge did not load. Please relaunch Trove.</p></div>';
+      }
+
+      const modelsEl = document.getElementById("models");
+      const continueBtn = document.getElementById("continue");
+      const hintEl = document.getElementById("hint");
+      const errGlobal = document.getElementById("err-global");
+
+      let catalog = [];
+      let statuses = {};
+
+      function fmtBytes(n) {
+        if (!n && n !== 0) return "—";
+        if (n < 1024) return n + " B";
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+        if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+        return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+      }
+      function fmtDuration(s) {
+        if (!isFinite(s) || s < 0) return "—";
+        if (s < 60) return Math.round(s) + "s";
+        if (s < 3600) return Math.floor(s / 60) + "m " + Math.round(s % 60) + "s";
+        return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
+      }
+      function fmtSpeed(bps) {
+        if (!bps) return "—";
+        if (bps < 1024 * 1024) return (bps / 1024).toFixed(0) + " KB/s";
+        return (bps / (1024 * 1024)).toFixed(1) + " MB/s";
+      }
+      function pillLabel(s) {
+        switch (s) {
+          case "ready": return "Ready";
+          case "downloading": return "Downloading";
+          case "verifying": return "Verifying";
+          case "error": return "Error";
+          default: return "Not downloaded";
+        }
+      }
+
+      function render() {
+        modelsEl.innerHTML = "";
+        let readyCount = 0;
+        let anyError = null;
+        for (const m of catalog) {
+          const st = statuses[m.id] || { status: "missing" };
+          if (st.status === "ready") readyCount++;
+          if (st.status === "error" && !anyError) anyError = st.error || "Unknown error";
+
+          const row = document.createElement("div");
+          row.className = "model-row";
+
+          const head = document.createElement("div");
+          head.className = "row-head";
+          head.innerHTML =
+            '<span class="name">' + m.displayName + '</span>' +
+            '<span class="status-pill"><span class="dot ' + (st.status === "ready" ? "ready" : st.status === "error" ? "error" : "") + '"></span>' + pillLabel(st.status) + '</span>' +
+            '<span class="size">' + fmtBytes(m.approxBytes) + '</span>';
+          row.appendChild(head);
+
+          if (st.status === "downloading" || st.status === "verifying") {
+            const pct = st.totalBytes ? Math.min(100, (st.downloadedBytes || 0) / st.totalBytes * 100) : 0;
+            const bar = document.createElement("div");
+            bar.className = "progress-bar";
+            bar.innerHTML = '<div class="fill" style="width:' + pct.toFixed(1) + '%"></div>';
+            row.appendChild(bar);
+
+            const meta = document.createElement("div");
+            meta.className = "meta";
+            meta.innerHTML =
+              '<span>' + fmtBytes(st.downloadedBytes || 0) + ' / ' + fmtBytes(st.totalBytes || m.approxBytes) + '</span>' +
+              '<span>' + fmtSpeed(st.speedBps) + '</span>' +
+              '<span>' + fmtDuration(st.etaSeconds) + ' left</span>';
+            row.appendChild(meta);
+          }
+
+          if (st.status === "error" && st.error) {
+            const err = document.createElement("div");
+            err.className = "err";
+            err.textContent = st.error;
+            row.appendChild(err);
+          }
+
+          const actions = document.createElement("div");
+          actions.className = "actions";
+          if (st.status === "missing" || st.status === "error") {
+            const btn = document.createElement("button");
+            btn.textContent = (st.downloadedBytes || 0) > 0 ? "Resume download" : "Download";
+            btn.onclick = () => t.downloadModel(m.id);
+            actions.appendChild(btn);
+          } else if (st.status === "downloading") {
+            const pause = document.createElement("button");
+            pause.textContent = "Pause";
+            pause.onclick = () => t.pauseModel(m.id);
+            actions.appendChild(pause);
+
+            const cancel = document.createElement("button");
+            cancel.textContent = "Cancel";
+            cancel.onclick = () => t.cancelModel(m.id);
+            actions.appendChild(cancel);
+          }
+          row.appendChild(actions);
+          modelsEl.appendChild(row);
+        }
+
+        if (anyError) {
+          errGlobal.hidden = false;
+          errGlobal.textContent = anyError;
+        } else {
+          errGlobal.hidden = true;
+        }
+
+        const allReady = readyCount === catalog.length;
+        continueBtn.disabled = !allReady;
+        if (allReady) {
+          hintEl.textContent = "All models ready. Tap Continue to start Trove.";
+        } else {
+          hintEl.textContent = readyCount + " of " + catalog.length + " models ready.";
+        }
+      }
+
+      async function init() {
+        const data = await t.listModels();
+        catalog = data.catalog;
+        statuses = data.statuses;
+        render();
+      }
+
+      t.onModelsUpdate((s) => {
+        statuses = s;
+        render();
+      });
+
+      continueBtn.addEventListener("click", async () => {
+        continueBtn.disabled = true;
+        continueBtn.textContent = "Starting Trove…";
+        await t.startServices();
+      });
+
+      init();
+    </script>
+  </body>
+</html>
