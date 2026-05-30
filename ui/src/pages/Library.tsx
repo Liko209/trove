@@ -7,6 +7,27 @@ import JobProgress from "../components/JobProgress.tsx";
 
 type Mode = "folder" | "topic";
 
+function LibraryEmpty() {
+  return (
+    <div className="bg-gradient-to-br from-stone-50 to-stone-100/50 border border-stone-200 rounded-2xl p-10 text-center">
+      <div className="text-4xl mb-3">📚</div>
+      <h2 className="text-xl font-semibold text-stone-900 mb-2">
+        No documents yet
+      </h2>
+      <p className="text-sm text-stone-600 mb-6 max-w-md mx-auto">
+        Once you add a folder, Bitrove will organize what's inside by where it lives
+        (folders) and what it's about (topics). All on this Mac, nothing in the cloud.
+      </p>
+      <Link
+        to="/add"
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-stone-900 text-white text-sm font-medium hover:bg-stone-700"
+      >
+        Add your first folder →
+      </Link>
+    </div>
+  );
+}
+
 function CategoryCard({ g, mode }: { g: LibraryGroup; mode: Mode }) {
   const linkParam = mode === "topic" ? "topic" : "category";
   return (
@@ -169,11 +190,15 @@ export default function Library() {
 
       {!data && !err && <div className="text-stone-500 text-sm">Loading…</div>}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {filtered.map((g) => (
-          <CategoryCard key={`${mode}-${g.category}`} g={g} mode={mode} />
-        ))}
-      </div>
+      {data && data.total_files === 0 ? (
+        <LibraryEmpty />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map((g) => (
+            <CategoryCard key={`${mode}-${g.category}`} g={g} mode={mode} />
+          ))}
+        </div>
+      )}
 
       {data && data.groups.length === 0 && mode === "topic" && (
         <div className="text-center py-12 text-stone-500">

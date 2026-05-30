@@ -1,21 +1,20 @@
-import { Link, Route, Routes, useLocation } from "react-router-dom";
-import Dashboard from "./pages/Dashboard.tsx";
+import { Link, Route, Routes, useLocation, Navigate } from "react-router-dom";
+import Home from "./pages/Home.tsx";
 import Library from "./pages/Library.tsx";
 import Sources from "./pages/Sources.tsx";
 import Add from "./pages/Add.tsx";
 import Jobs from "./pages/Jobs.tsx";
-import Connect from "./pages/Connect.tsx";
+import Agents from "./pages/Agents.tsx";
+import Dashboard from "./pages/Dashboard.tsx";
 import { useJobs } from "./lib/useJobs.ts";
 import { GlobalJobIndicator } from "./components/GlobalJobIndicator.tsx";
 import UpdateBanner from "./components/UpdateBanner.tsx";
 
 const NAV = [
-  { to: "/", label: "Library" },
-  { to: "/sources", label: "All files" },
+  { to: "/", label: "Home" },
+  { to: "/library", label: "Library" },
   { to: "/add", label: "Add" },
-  { to: "/jobs", label: "Jobs" },
-  { to: "/connect", label: "Connect" },
-  { to: "/dashboard", label: "Dashboard" },
+  { to: "/agents", label: "AI tools" },
 ];
 
 function NavLink({ to, label, badge }: { to: string; label: string; badge?: number }) {
@@ -26,7 +25,7 @@ function NavLink({ to, label, badge }: { to: string; label: string; badge?: numb
     <Link
       to={to}
       className={
-        "px-3 py-1.5 rounded text-sm font-medium transition flex items-center gap-1.5 " +
+        "px-3 py-1.5 rounded text-sm font-medium transition flex items-center gap-1.5 app-no-drag " +
         (isActive ? "bg-stone-900 text-white" : "text-stone-700 hover:bg-stone-200")
       }
     >
@@ -51,38 +50,49 @@ export default function App() {
     <div className="min-h-full flex flex-col">
       <div className="sticky top-0 z-10">
         <UpdateBanner />
-      <header className="border-b border-stone-200 bg-white app-drag">
-        <div className="max-w-7xl mx-auto pl-24 pr-6 py-3 flex items-center gap-6">
-          <Link
-            to="/"
-            className="font-semibold text-stone-900 tracking-tight hover:text-stone-700 transition-colors app-no-drag"
-          >
-            Bitrove
-          </Link>
-          <nav className="flex gap-1 app-no-drag">
-            {NAV.map((n) => (
-              <NavLink
-                key={n.to}
-                {...n}
-                badge={n.to === "/jobs" ? active.length : undefined}
-              />
-            ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-3 app-no-drag">
-            <GlobalJobIndicator />
-            <div className="text-xs text-stone-500">v{__APP_VERSION__}</div>
+        <header className="border-b border-stone-200 bg-white app-drag">
+          <div className="max-w-7xl mx-auto pl-24 pr-6 py-3 flex items-center gap-6">
+            <Link
+              to="/"
+              className="font-semibold text-stone-900 tracking-tight hover:text-stone-700 transition-colors app-no-drag"
+            >
+              Bitrove
+            </Link>
+            <nav className="flex gap-1 app-no-drag">
+              {NAV.map((n) => (
+                <NavLink key={n.to} {...n} />
+              ))}
+            </nav>
+            <div className="ml-auto flex items-center gap-3 app-no-drag">
+              <GlobalJobIndicator />
+              {/* Active jobs are visible from the indicator above, plus on Home.
+                  Hidden technical pages remain accessible by URL: /jobs /sources /dashboard. */}
+              {active.length > 0 && (
+                <Link
+                  to="/jobs"
+                  className="text-xs text-stone-500 hover:text-stone-900 underline-offset-2 hover:underline"
+                >
+                  Activity
+                </Link>
+              )}
+              <div className="text-xs text-stone-500">v{__APP_VERSION__}</div>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
       </div>
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
         <Routes>
-          <Route path="/" element={<Library />} />
-          <Route path="/sources" element={<Sources />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/library" element={<Library />} />
           <Route path="/add" element={<Add />} />
+          <Route path="/agents" element={<Agents />} />
+          {/* Power-user pages — reachable by URL, not in nav */}
+          <Route path="/sources" element={<Sources />} />
           <Route path="/jobs" element={<Jobs />} />
-          <Route path="/connect" element={<Connect />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          {/* Old / typo'd paths → Home */}
+          <Route path="/connect" element={<Navigate to="/agents" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>

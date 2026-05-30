@@ -62,6 +62,62 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── /api/source-preview ───────────────────────────────────
+// Fast pre-scan to tell the user what will happen if they index a folder.
+// Returns counts (text / catalog / skipped) + total bytes + time estimate.
+// Capped at 200k entries so accidentally pointing at $HOME doesn't hang.
+app.get("/api/source-preview", async (req, res) => {
+  const path = (req.query.path as string) || "";
+  if (!path) return res.status(400).json({ error: "missing path" });
+  if (!existsSync(path)) return res.status(404).json({ error: "path not found" });
+
+  const excludes = [...DEFAULT_EXCLUDES];
+  let text = 0;
+  let catalog = 0;
+  let skipped = 0;
+  let totalBytes = 0;
+  const byExt: Record<string, number> = {};
+  const HARD_CAP = 200000;
+  let seen = 0;
+
+  try {
+    for await (const p of walkSmart(path, { excludes })) {
+      seen++;
+      if (seen > HARD_CAP) break;
+      const ext = extname(p).toLowerCase() || "(noext)";
+      byExt[ext] = (byExt[ext] ?? 0) + 1;
+      const kind = classify(p);
+      try {
+        totalBytes += statSync(p).size;
+      } catch {}
+      if (kind === "text") text++;
+      else if (kind === "catalog") catalog++;
+      else skipped++;
+    }
+  } catch (e) {
+    return res.status(500).json({ error: (e as Error).message });
+  }
+
+  // ~1s per text doc + ~0.05s per catalog entry on M-series. Floor 5s.
+  const estimatedSeconds = Math.max(5, Math.round(text * 1.0 + catalog * 0.05));
+  const topExtensions = Object.entries(byExt)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([ext, count]) => ({ ext, count }));
+
+  res.json({
+    path,
+    text,
+    catalog,
+    skipped,
+    totalScanned: seen,
+    cappedAt: seen >= HARD_CAP ? HARD_CAP : null,
+    totalBytes,
+    estimatedSeconds,
+    topExtensions,
+  });
+});
+
 // ── /api/agents/claude-config ─────────────────────────────
 // Detect Claude Code config files & report whether Bitrove MCP is wired up.
 // Used by the Connect page in the UI.

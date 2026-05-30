@@ -103,6 +103,18 @@ export const api = {
     }),
   libraryGroups: () => j<LibraryGroups>("/api/library/groups"),
   libraryTopics: () => j<LibraryGroups>("/api/library/topics"),
+  sourcePreview: (path: string) =>
+    j<{
+      path: string;
+      text: number;
+      catalog: number;
+      skipped: number;
+      totalScanned: number;
+      cappedAt: number | null;
+      totalBytes: number;
+      estimatedSeconds: number;
+      topExtensions: { ext: string; count: number }[];
+    }>(`/api/source-preview?path=${encodeURIComponent(path)}`),
   classify: (onlyMissing = false) =>
     j<{ jobId: string }>("/api/classify", {
       method: "POST",
