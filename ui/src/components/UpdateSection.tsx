@@ -25,6 +25,48 @@ function speed(bps: number | undefined): string {
   return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
 }
 
+// GitHub Releases hands us release notes as HTML (its Markdown renderer
+// runs server-side). Whitelist a tiny prose vocabulary, drop the long
+// "Installing on macOS" footer that every release carries, and trim
+// down to the first <hr/> so the in-app card stays short. The source
+// is our own release pipeline + GitHub API — we still strip everything
+// outside the whitelist so an unexpected tag can't smuggle attributes.
+const ALLOWED_TAGS = new Set([
+  "H1", "H2", "H3", "H4",
+  "P", "UL", "OL", "LI",
+  "CODE", "STRONG", "EM", "B", "I", "BR",
+]);
+
+function sanitizeReleaseNotes(raw: string): string {
+  if (!raw) return "";
+  // Strip our standard "Installing on macOS" footer — everything past the
+  // first horizontal rule is boilerplate that doesn't belong in the card.
+  const cutAt = raw.search(/<hr\b/i);
+  const body = cutAt > 0 ? raw.slice(0, cutAt) : raw;
+  if (typeof DOMParser === "undefined") return ""; // SSR / preview safety
+  const doc = new DOMParser().parseFromString(body, "text/html");
+  return Array.from(doc.body.childNodes).map(serializeNode).join("");
+}
+
+function serializeNode(node: Node): string {
+  if (node.nodeType === 3 /* TEXT_NODE */) return escapeHtml(node.textContent ?? "");
+  if (node.nodeType !== 1 /* ELEMENT_NODE */) return "";
+  const el = node as Element;
+  const inner = Array.from(el.childNodes).map(serializeNode).join("");
+  if (ALLOWED_TAGS.has(el.tagName)) {
+    const tag = el.tagName.toLowerCase();
+    return `<${tag}>${inner}</${tag}>`;
+  }
+  return inner;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export function UpdateAvailableCard() {
   const { state, download, install } = useUpdater();
 
@@ -113,12 +155,25 @@ export function UpdateAvailableCard() {
 
         {state.phase === "available" && state.info.releaseNotes && (
           <div className="mt-3 pt-3 border-t border-stone-100">
-            <div className="text-[10px] uppercase tracking-wider text-stone-500 mb-1.5">
-              What's new
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[10px] uppercase tracking-wider text-stone-500">
+                What's new
+              </div>
+              <a
+                href="https://github.com/Liko209/bitrove/releases"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] text-stone-500 hover:text-stone-900 underline"
+              >
+                Full notes
+              </a>
             </div>
-            <pre className="text-xs text-stone-700 whitespace-pre-wrap font-sans line-clamp-5">
-              {state.info.releaseNotes}
-            </pre>
+            <div
+              className="text-xs text-stone-700 release-notes line-clamp-6"
+              dangerouslySetInnerHTML={{
+                __html: sanitizeReleaseNotes(state.info.releaseNotes),
+              }}
+            />
           </div>
         )}
       </div>

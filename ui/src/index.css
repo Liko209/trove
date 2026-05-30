@@ -24,6 +24,53 @@ body {
   color: #1c1917;
 }
 
+/* Release notes inside <UpdateAvailableCard /> get a tiny prose stylesheet.
+   We feed in sanitized HTML (h2 / ul / li / strong / em / code only), so a
+   handful of rules is enough to make it read like a changelog instead of
+   raw tags. */
+.release-notes h1,
+.release-notes h2,
+.release-notes h3,
+.release-notes h4 {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #57534e;
+  margin: 0.5rem 0 0.25rem;
+}
+.release-notes h1:first-child,
+.release-notes h2:first-child,
+.release-notes h3:first-child {
+  margin-top: 0;
+}
+.release-notes p {
+  margin: 0.25rem 0;
+}
+.release-notes ul,
+.release-notes ol {
+  list-style: disc;
+  padding-left: 1.1rem;
+  margin: 0.25rem 0;
+}
+.release-notes ol {
+  list-style: decimal;
+}
+.release-notes li {
+  margin: 0.1rem 0;
+}
+.release-notes code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.95em;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0 0.25rem;
+  border-radius: 3px;
+}
+.release-notes strong {
+  font-weight: 600;
+  color: #1c1917;
+}
+
 /* 简单的滚动条美化 */
 ::-webkit-scrollbar {
   width: 10px;
