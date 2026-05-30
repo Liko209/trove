@@ -139,6 +139,163 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
   );
 }
 
+/* ── Watched roots ───────────────────────────────────────────────
+   Folders Bitrove is actively keeping in sync with disk. Lives at
+   the top of Library so users can see (a) what's being watched and
+   (b) when each root was last refreshed. Toggle the switch to pause
+   watching without losing the index; click "Remove" to drop the row
+   (existing indexed files stay until the user separately deletes
+   them or they show up in Missing). */
+function WatchedRootsSection() {
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.listWatchedRoots>> | null>(null);
+
+  async function load() {
+    try {
+      setData(await api.listWatchedRoots());
+    } catch {}
+  }
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (!data || data.rows.length === 0) return null;
+
+  return (
+    <section className="mb-8">
+      <h2 className="t-section mb-3">Folders Bitrove is watching</h2>
+      <div className="bg-white border border-stone-200 rounded-xl divide-y divide-stone-100">
+        {data.rows.map((r) => {
+          const live = data.watcher.active.find((a) => a.root === r.path);
+          const lastDone = r.last_completed_at
+            ? new Date(r.last_completed_at).toLocaleString()
+            : "—";
+          const stateLabel = !r.watch_enabled
+            ? "Paused"
+            : live?.scanning
+              ? "Scanning"
+              : "Watching";
+          const stateDot = !r.watch_enabled
+            ? "bg-stone-300"
+            : live?.scanning
+              ? "bg-sky-500"
+              : "bg-emerald-500";
+          return (
+            <div key={r.path} className="px-4 py-3 flex items-center gap-3 text-sm">
+              <span className={"w-1.5 h-1.5 rounded-full shrink-0 " + stateDot} />
+              <div className="flex-1 min-w-0">
+                <div className="font-mono text-stone-800 truncate" title={r.path}>
+                  {r.path}
+                </div>
+                <div className="text-xs text-stone-500 mt-0.5">
+                  {stateLabel} · last sync {lastDone}
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  await api.setWatchedRootEnabled(r.path, !r.watch_enabled);
+                  load();
+                }}
+                className="text-xs px-2.5 py-1 rounded-md text-stone-700 hover:bg-stone-100"
+              >
+                {r.watch_enabled ? "Pause" : "Resume"}
+              </button>
+              <button
+                onClick={async () => {
+                  if (!confirm(`Stop watching ${r.path}?\n\nIndexed files stay in the library.`)) return;
+                  await api.removeWatchedRoot(r.path);
+                  load();
+                }}
+                className="text-xs px-2.5 py-1 rounded-md text-stone-500 hover:text-rose-700 hover:bg-rose-50"
+              >
+                Remove
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ── Missing files ───────────────────────────────────────────────
+   Source rows whose underlying files are gone from disk. Surfaces
+   as an amber "you may want to clean these up" panel so the user
+   can decide whether the deletion was intentional. Bulk-delete via
+   one button; nothing auto-deletes. */
+function MissingFilesSection() {
+  const [rows, setRows] = useState<Awaited<ReturnType<typeof api.listMissing>>["rows"] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    try {
+      const r = await api.listMissing();
+      setRows(r.rows);
+    } catch {}
+  }
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (!rows || rows.length === 0) return null;
+
+  const totalChunks = rows.reduce((s, r) => s + r.chunk_count, 0);
+
+  return (
+    <section className="mb-8">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+        <div className="flex items-baseline justify-between mb-2">
+          <h2 className="t-h2 text-amber-900">
+            {rows.length} indexed file{rows.length === 1 ? "" : "s"} no longer on disk
+          </h2>
+          <span className="text-xs text-amber-800 tabular-nums">
+            {totalChunks.toLocaleString()} chunks
+          </span>
+        </div>
+        <p className="text-xs text-amber-900/80 mb-3 leading-relaxed">
+          We kept the index in case you moved them temporarily. If you want
+          search results to stop pointing at files that aren't there, clean up.
+        </p>
+        <details>
+          <summary className="text-xs text-amber-900 cursor-pointer hover:underline mb-2">
+            Show {Math.min(rows.length, 20)} of {rows.length}
+          </summary>
+          <ul className="space-y-0.5 mb-3 max-h-48 overflow-y-auto">
+            {rows.slice(0, 20).map((r) => (
+              <li key={r.source_path} className="text-xs font-mono text-amber-900 truncate" title={r.source_path}>
+                {r.source_path}
+              </li>
+            ))}
+          </ul>
+        </details>
+        <div className="flex gap-2">
+          <button
+            disabled={busy}
+            onClick={async () => {
+              if (!confirm(`Remove ${rows.length} entries from the index?\n\nThe original files are already gone from disk.`)) return;
+              setBusy(true);
+              try {
+                await api.deleteMissing(rows.map((r) => r.source_path));
+                await load();
+              } catch (e) {
+                alert((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="text-xs px-3 py-1.5 rounded-md font-medium bg-amber-900 text-white hover:bg-amber-800 disabled:opacity-40"
+          >
+            {busy ? "Cleaning…" : "Clean up all"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function LibraryEmpty() {
   return (
     <div className="bg-gradient-to-br from-stone-50 to-stone-100/50 border border-stone-200 rounded-2xl p-10 text-center">
@@ -242,6 +399,10 @@ export default function Library() {
       <SystemBar />
 
       <ActiveJobsBanner jobs={active} />
+
+      <WatchedRootsSection />
+
+      <MissingFilesSection />
 
       <div className="flex items-baseline flex-wrap gap-3 mb-6">
         <h1 className="t-display">Library</h1>

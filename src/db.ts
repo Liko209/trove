@@ -61,11 +61,42 @@ export function openDb(): Database.Database {
       classified_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_source_tags_category ON source_tags(category_id);
+    CREATE TABLE IF NOT EXISTS watched_roots (
+      path TEXT PRIMARY KEY,
+      added_at INTEGER NOT NULL,
+      last_scanned_at INTEGER,
+      last_completed_at INTEGER,
+      watch_enabled INTEGER NOT NULL DEFAULT 1
+    );
   `);
   // 兼容老库：给 chunks 加 kind 列（idempotent）
-  const cols = db.prepare(`PRAGMA table_info(chunks)`).all() as { name: string }[];
-  if (!cols.some((c) => c.name === "kind")) {
+  const chunkCols = db.prepare(`PRAGMA table_info(chunks)`).all() as { name: string }[];
+  if (!chunkCols.some((c) => c.name === "kind")) {
     db.exec(`ALTER TABLE chunks ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'`);
+  }
+  // Phase 2 migration: incremental-index metadata. Each column added
+  // idempotently — re-runs safely on existing libraries.
+  const srcCols = db.prepare(`PRAGMA table_info(sources)`).all() as { name: string }[];
+  const srcColNames = new Set(srcCols.map((c) => c.name));
+  if (!srcColNames.has("mtime_ms")) {
+    db.exec(`ALTER TABLE sources ADD COLUMN mtime_ms INTEGER`);
+  }
+  if (!srcColNames.has("size_bytes")) {
+    db.exec(`ALTER TABLE sources ADD COLUMN size_bytes INTEGER`);
+  }
+  if (!srcColNames.has("content_hash")) {
+    db.exec(`ALTER TABLE sources ADD COLUMN content_hash TEXT`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_content_hash ON sources(content_hash)`);
+  }
+  if (!srcColNames.has("missing_since")) {
+    db.exec(`ALTER TABLE sources ADD COLUMN missing_since INTEGER`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_missing_since ON sources(missing_since)`);
+  }
+  if (!srcColNames.has("watched_root")) {
+    // Which user-watched root this source belongs under, if any. NULL means
+    // the file was added via a one-off pick rather than a watched folder.
+    db.exec(`ALTER TABLE sources ADD COLUMN watched_root TEXT`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_watched_root ON sources(watched_root)`);
   }
   return db;
 }
@@ -139,22 +170,166 @@ export function deleteSource(db: Database.Database, source_path: string): number
   return ids.length;
 }
 
-export function upsertSource(db: Database.Database, args: SourceRow): void {
+export type SourceMetaRow = SourceRow & {
+  mtime_ms?: number | null;
+  size_bytes?: number | null;
+  content_hash?: string | null;
+  missing_since?: number | null;
+  watched_root?: string | null;
+};
+
+export function upsertSource(
+  db: Database.Database,
+  args: SourceMetaRow,
+): void {
   db.prepare(
-    `INSERT INTO sources (source_path, kind, source_mtime, indexed_at, chunk_count)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO sources (
+        source_path, kind, source_mtime, indexed_at, chunk_count,
+        mtime_ms, size_bytes, content_hash, missing_since, watched_root
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source_path) DO UPDATE SET
        kind=excluded.kind,
        source_mtime=excluded.source_mtime,
        indexed_at=excluded.indexed_at,
-       chunk_count=excluded.chunk_count`,
-  ).run(args.source_path, args.kind, args.source_mtime, args.indexed_at, args.chunk_count);
+       chunk_count=excluded.chunk_count,
+       mtime_ms=excluded.mtime_ms,
+       size_bytes=excluded.size_bytes,
+       content_hash=excluded.content_hash,
+       missing_since=excluded.missing_since,
+       watched_root=COALESCE(excluded.watched_root, sources.watched_root)`,
+  ).run(
+    args.source_path,
+    args.kind,
+    args.source_mtime,
+    args.indexed_at,
+    args.chunk_count,
+    args.mtime_ms ?? null,
+    args.size_bytes ?? null,
+    args.content_hash ?? null,
+    args.missing_since ?? null,
+    args.watched_root ?? null,
+  );
 }
 
-export function getSource(db: Database.Database, source_path: string): SourceRow | undefined {
+export function getSource(db: Database.Database, source_path: string): SourceMetaRow | undefined {
   return db.prepare(`SELECT * FROM sources WHERE source_path = ?`).get(source_path) as
-    | SourceRow
+    | SourceMetaRow
     | undefined;
+}
+
+// Dedup-A support: look up sources that share a content hash, excluding the
+// caller's own path so we don't flag a file as a duplicate of itself.
+export function findByContentHash(
+  db: Database.Database,
+  hash: string,
+  excludePath?: string,
+): SourceMetaRow[] {
+  if (excludePath) {
+    return db
+      .prepare(`SELECT * FROM sources WHERE content_hash = ? AND source_path != ?`)
+      .all(hash, excludePath) as SourceMetaRow[];
+  }
+  return db.prepare(`SELECT * FROM sources WHERE content_hash = ?`).all(hash) as SourceMetaRow[];
+}
+
+// ── watched_roots helpers ─────────────────────────────────────
+export type WatchedRoot = {
+  path: string;
+  added_at: number;
+  last_scanned_at: number | null;
+  last_completed_at: number | null;
+  watch_enabled: number; // 0 or 1
+};
+
+export function listWatchedRoots(db: Database.Database): WatchedRoot[] {
+  return db.prepare(`SELECT * FROM watched_roots ORDER BY added_at DESC`).all() as WatchedRoot[];
+}
+
+export function addWatchedRoot(db: Database.Database, path: string): void {
+  db.prepare(
+    `INSERT INTO watched_roots (path, added_at, watch_enabled) VALUES (?, ?, 1)
+     ON CONFLICT(path) DO UPDATE SET watch_enabled = 1`,
+  ).run(path, Date.now());
+}
+
+export function removeWatchedRoot(db: Database.Database, path: string): void {
+  db.prepare(`DELETE FROM watched_roots WHERE path = ?`).run(path);
+}
+
+export function setWatchEnabled(db: Database.Database, path: string, enabled: boolean): void {
+  db.prepare(`UPDATE watched_roots SET watch_enabled = ? WHERE path = ?`).run(
+    enabled ? 1 : 0,
+    path,
+  );
+}
+
+export function markScanRun(
+  db: Database.Database,
+  path: string,
+  completed: boolean,
+): void {
+  const now = Date.now();
+  if (completed) {
+    db.prepare(
+      `UPDATE watched_roots SET last_scanned_at = ?, last_completed_at = ? WHERE path = ?`,
+    ).run(now, now, path);
+  } else {
+    db.prepare(`UPDATE watched_roots SET last_scanned_at = ? WHERE path = ?`).run(now, path);
+  }
+}
+
+// Find sources under a watched root that we expected to still see but didn't
+// during this scan pass. Used by the watcher to mark them missing_since=now().
+export function markSourcesMissing(
+  db: Database.Database,
+  watchedRoot: string,
+  seenPaths: Set<string>,
+  now: number,
+): number {
+  // Pull every still-present source under this root.
+  const rows = db
+    .prepare(
+      `SELECT source_path FROM sources
+       WHERE watched_root = ? AND missing_since IS NULL`,
+    )
+    .all(watchedRoot) as { source_path: string }[];
+  let n = 0;
+  const upd = db.prepare(
+    `UPDATE sources SET missing_since = ? WHERE source_path = ?`,
+  );
+  const tx = db.transaction(() => {
+    for (const r of rows) {
+      if (!seenPaths.has(r.source_path)) {
+        upd.run(now, r.source_path);
+        n++;
+      }
+    }
+  });
+  tx();
+  return n;
+}
+
+// When a previously-missing file reappears, clear the marker.
+export function clearMissing(db: Database.Database, source_path: string): void {
+  db.prepare(`UPDATE sources SET missing_since = NULL WHERE source_path = ?`).run(source_path);
+}
+
+export type MissingSourceRow = {
+  source_path: string;
+  kind: ChunkKind;
+  chunk_count: number;
+  size_bytes: number | null;
+  missing_since: number;
+  watched_root: string | null;
+};
+
+export function listMissingSources(db: Database.Database): MissingSourceRow[] {
+  return db
+    .prepare(
+      `SELECT source_path, kind, chunk_count, size_bytes, missing_since, watched_root
+       FROM sources WHERE missing_since IS NOT NULL ORDER BY missing_since DESC`,
+    )
+    .all() as MissingSourceRow[];
 }
 
 export type ListSourcesOpts = {

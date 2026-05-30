@@ -157,7 +157,14 @@ export const api = {
     }),
   ingestScan: (
     root: string,
-    opts: { force?: boolean; excludes?: string[]; extraIncludeExts?: string[] } = {},
+    opts: {
+      force?: boolean;
+      excludes?: string[];
+      extraIncludeExts?: string[];
+      // Phase 2: register the root with the file-watcher after the
+      // initial scan finishes so changes get re-indexed automatically.
+      watchAfterScan?: boolean;
+    } = {},
   ) =>
     j<{ jobId: string }>("/api/ingest/scan", {
       method: "POST",
@@ -167,7 +174,49 @@ export const api = {
         force: opts.force ?? false,
         excludes: opts.excludes ?? [],
         extraIncludeExts: opts.extraIncludeExts ?? [],
+        watchAfterScan: opts.watchAfterScan ?? true,
       }),
+    }),
+  // Watched-roots CRUD + missing-file reconciliation.
+  listWatchedRoots: () =>
+    j<{
+      rows: {
+        path: string;
+        added_at: number;
+        last_scanned_at: number | null;
+        last_completed_at: number | null;
+        watch_enabled: number;
+      }[];
+      watcher: { initialized: boolean; active: { root: string; dirty: number; scanning: boolean }[] };
+    }>("/api/watched-roots"),
+  setWatchedRootEnabled: (path: string, enabled: boolean) =>
+    j<{ ok: true }>("/api/watched-roots", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, enabled }),
+    }),
+  removeWatchedRoot: (path: string) =>
+    j<{ ok: true }>("/api/watched-roots", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path }),
+    }),
+  listMissing: () =>
+    j<{
+      rows: {
+        source_path: string;
+        kind: "text" | "catalog";
+        chunk_count: number;
+        size_bytes: number | null;
+        missing_since: number;
+        watched_root: string | null;
+      }[];
+    }>("/api/missing-files"),
+  deleteMissing: (paths: string[]) =>
+    j<{ removed: number }>("/api/missing-files", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paths }),
     }),
   getIngestSettings: () =>
     j<{

@@ -40,6 +40,19 @@ import {
   DEFAULT_EXCLUDED_EXTS,
   DEFAULT_EXCLUDED_FOLDERS,
 } from "./settings.ts";
+import {
+  addWatchedRoot,
+  removeWatchedRoot,
+  setWatchEnabled,
+  listWatchedRoots,
+  listMissingSources,
+} from "./db.ts";
+import {
+  initWatchers,
+  startWatching,
+  stopWatching,
+  watcherStatus,
+} from "./watcher.ts";
 import { deriveCategory, fileTypeBucket } from "./category.ts";
 import {
   CATEGORIES as TAG_CATEGORIES,
@@ -493,7 +506,9 @@ app.post("/api/ingest/files", async (req, res) => {
         stoppedEarly = true;
         break;
       }
-      const r = await ingestFile(db, p, { force });
+      // Hand-picked files bypass dedup: the user explicitly chose this
+      // file by name, that's an unambiguous "yes, add this".
+      const r = await ingestFile(db, p, { force, includeDuplicates: true });
       done++;
       emitJob(job.id, {
         type: "item",
@@ -568,6 +583,11 @@ app.post("/api/ingest/scan", async (req, res) => {
   const includeExts = new Set(
     includeExtsRaw.map((s) => s.trim().toLowerCase()).map((s) => (s.startsWith(".") ? s : "." + s)),
   );
+  // Phase 2: persistent watch. When true, we register this root in the
+  // watched_roots table and the file-watcher starts monitoring it after
+  // the initial scan. Default true mirrors the Add-page UX — most users
+  // adding a folder probably want it kept fresh.
+  const watchAfterScan = req.body?.watchAfterScan !== false;
   if (!root || !existsSync(root)) {
     return res.status(400).json({ error: "body.root must be an existing directory" });
   }
@@ -593,6 +613,9 @@ app.post("/api/ingest/scan", async (req, res) => {
     emitJob(job.id, { type: "started", total: queue.length });
 
     const db = openDb();
+    if (watchAfterScan) {
+      addWatchedRoot(db, root);
+    }
     let done = 0;
     let stoppedEarly = false;
     for (const p of queue) {
@@ -600,7 +623,10 @@ app.post("/api/ingest/scan", async (req, res) => {
         stoppedEarly = true;
         break;
       }
-      const r = await ingestFile(db, p, { force });
+      const r = await ingestFile(db, p, {
+        force,
+        watchedRoot: watchAfterScan ? root : undefined,
+      });
       done++;
       emitJob(job.id, {
         type: "item",
@@ -621,6 +647,12 @@ app.post("/api/ingest/scan", async (req, res) => {
       errors: finalState.errors,
       ms: Date.now() - t0,
     });
+    // After the initial scan finishes (success or otherwise), bring the
+    // watcher up for this root so subsequent changes get picked up
+    // incrementally. initWatchers() is idempotent.
+    if (watchAfterScan) {
+      initWatchers().catch((e) => console.error("[watcher] post-scan init failed:", e));
+    }
   })().catch((e) => {
     emitJob(job.id, { type: "failed", error: (e as Error).message });
   });
@@ -836,9 +868,109 @@ if (existsSync(UI_DIST)) {
   });
 }
 
+// ── /api/watched-roots ────────────────────────────────────
+app.get("/api/watched-roots", (_req, res) => {
+  const db = openDb();
+  try {
+    const rows = listWatchedRoots(db);
+    res.json({ rows, watcher: watcherStatus() });
+  } finally {
+    db.close();
+  }
+});
+
+app.post("/api/watched-roots", async (req, res) => {
+  const path = (req.body?.path as string) || "";
+  if (!path || !existsSync(path)) {
+    return res.status(400).json({ error: "path missing or does not exist" });
+  }
+  const db = openDb();
+  try {
+    addWatchedRoot(db, path);
+    const row = listWatchedRoots(db).find((r) => r.path === path);
+    res.json({ row });
+  } finally {
+    db.close();
+  }
+  // Pick up the new root in the running watcher (kicks off an initial pass).
+  initWatchers().catch((e) => console.error("[watcher] reinit failed:", e));
+});
+
+app.delete("/api/watched-roots", async (req, res) => {
+  const path = (req.body?.path as string) || (req.query.path as string) || "";
+  if (!path) return res.status(400).json({ error: "missing path" });
+  const db = openDb();
+  try {
+    removeWatchedRoot(db, path);
+    res.json({ ok: true });
+  } finally {
+    db.close();
+  }
+  stopWatching(path).catch((e) => console.error("[watcher] stop failed:", e));
+});
+
+app.patch("/api/watched-roots", async (req, res) => {
+  const path = (req.body?.path as string) || "";
+  const enabled = Boolean(req.body?.enabled);
+  if (!path) return res.status(400).json({ error: "missing path" });
+  const db = openDb();
+  try {
+    setWatchEnabled(db, path, enabled);
+    res.json({ ok: true });
+  } finally {
+    db.close();
+  }
+  if (enabled) {
+    initWatchers().catch((e) => console.error("[watcher] reinit failed:", e));
+  } else {
+    stopWatching(path).catch((e) => console.error("[watcher] stop failed:", e));
+  }
+});
+
+// ── /api/missing-files ────────────────────────────────────
+app.get("/api/missing-files", (_req, res) => {
+  const db = openDb();
+  try {
+    const rows = listMissingSources(db);
+    res.json({ rows });
+  } finally {
+    db.close();
+  }
+});
+
+app.delete("/api/missing-files", (req, res) => {
+  // Bulk delete sources whose paths are listed AND that are currently
+  // marked missing — guards against the request racing with a file
+  // reappearing between the GET and the DELETE.
+  const paths = (req.body?.paths as string[]) ?? [];
+  if (!Array.isArray(paths) || paths.length === 0) {
+    return res.status(400).json({ error: "body.paths must be a non-empty array" });
+  }
+  const db = openDb();
+  let removed = 0;
+  try {
+    for (const p of paths) {
+      const row = db
+        .prepare(`SELECT missing_since FROM sources WHERE source_path = ?`)
+        .get(p) as { missing_since: number | null } | undefined;
+      if (row && row.missing_since != null) {
+        deleteSource(db, p);
+        removed++;
+      }
+    }
+  } finally {
+    db.close();
+  }
+  res.json({ removed });
+});
+
 app.listen(PORT, "127.0.0.1", () => {
   console.log(`local-kb admin ready: http://127.0.0.1:${PORT}`);
   if (!existsSync(UI_DIST)) {
     console.log(`(UI not built; run 'npm run ui:build' to enable web interface)`);
   }
+  // Bring up file watchers for whatever the user already marked as
+  // watched roots. Failures here are non-fatal — incremental indexing
+  // simply won't run, the user can still re-scan manually.
+  initWatchers().catch((e) => console.error("[watcher] init failed:", e));
 });

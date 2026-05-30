@@ -19,15 +19,17 @@ export default function ScanConfirmModal({
 }: {
   path: string;
   onCancel: () => void;
-  // Receives the list of extensions the user explicitly re-enabled for
-  // this scan (i.e. ones that are on the default-exclude list but the
-  // user wants included this time anyway).
-  onConfirm: (extraIncludeExts: string[]) => void;
+  // First arg: ext overrides (default-excluded types the user wants this
+  //   one scan to include).
+  // Second arg: whether to keep this folder under a file-watcher after
+  //   the initial scan. Default true; user can opt out via the toggle.
+  onConfirm: (extraIncludeExts: string[], watchAfterScan: boolean) => void;
 }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [err, setErr] = useState<string | null>(null);
   // Extensions the user has clicked back ON for this scan.
   const [overrides, setOverrides] = useState<Set<string>>(new Set());
+  const [watchAfter, setWatchAfter] = useState(true);
   const { perm, recheck } = usePermission(path);
 
   useEffect(() => {
@@ -278,10 +280,16 @@ export default function ScanConfirmModal({
           )}
         </div>
 
-        <div className="px-6 py-4 bg-stone-50 border-t border-stone-100 flex items-center gap-3 shrink-0">
-          <span className="text-xs text-stone-500">
-            Runs in the background. Pause any time.
-          </span>
+        <div className="px-6 py-4 bg-stone-50 border-t border-stone-100 flex items-center gap-4 shrink-0">
+          <label className="flex items-center gap-2 text-xs text-stone-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={watchAfter}
+              onChange={(e) => setWatchAfter(e.target.checked)}
+              className="accent-stone-900"
+            />
+            Keep watching for changes
+          </label>
           <div className="ml-auto flex gap-2">
             <button
               onClick={onCancel}
@@ -290,7 +298,7 @@ export default function ScanConfirmModal({
               Cancel
             </button>
             <button
-              onClick={() => onConfirm([...overrides])}
+              onClick={() => onConfirm([...overrides], watchAfter)}
               disabled={!preview || totalIndexable === 0 || perm.state !== "granted"}
               className="px-4 py-1.5 rounded-md text-sm font-medium bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed"
             >

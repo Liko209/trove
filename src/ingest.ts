@@ -11,21 +11,46 @@ import {
   deleteSource,
   upsertSource,
   getSource,
+  findByContentHash,
+  clearMissing,
+  type SourceMetaRow,
 } from "./db.ts";
 import { chunkText } from "./chunk.ts";
 import { extractText, classify } from "./extract.ts";
 import { makeCatalogCard } from "./catalog.ts";
+import { hashFile } from "./hash.ts";
 
 export type IngestResult =
   | { status: "skipped-unsupported"; path: string; reason: string }
   | { status: "skipped-cached"; path: string }
+  | { status: "skipped-mtime-touched"; path: string }
+  | {
+      status: "skipped-duplicate";
+      path: string;
+      duplicateOf: string;
+      contentHash: string;
+    }
   | { status: "ingested"; path: string; kind: "text" | "catalog"; chunks: number; ms: number }
   | { status: "error"; path: string; error: string };
+
+export type IngestOpts = {
+  // Re-index even if (mtime, size) match what's already in DB.
+  force?: boolean;
+  // When the user explicitly hand-picked a file (e.g. via Pick Files
+  // dialog), they've already been warned about duplicate content if the
+  // UI surfaced one — let it through regardless. Folder scans should
+  // leave this false so dedup-A actually skips redundant files.
+  includeDuplicates?: boolean;
+  // If this ingest was driven by a watched-root scan, stamp the source
+  // row so the watcher's missing-file pass knows which root it belongs
+  // to. NULL for one-off picks.
+  watchedRoot?: string;
+};
 
 export async function ingestFile(
   db: ReturnType<typeof openDb>,
   rawPath: string,
-  opts: { force?: boolean } = {},
+  opts: IngestOpts = {},
 ): Promise<IngestResult> {
   const path = resolve(rawPath);
   const kind = classify(path);
@@ -34,22 +59,75 @@ export async function ingestFile(
   }
 
   let mtimeISO: string;
+  let mtimeMs: number;
+  let sizeBytes: number;
   try {
     const s = await stat(path);
     mtimeISO = s.mtime.toISOString();
+    mtimeMs = s.mtimeMs;
+    sizeBytes = s.size;
   } catch (e) {
     return { status: "error", path, error: `stat: ${(e as Error).message}` };
   }
 
-  // 同 mtime 跳过（除非 --force）
-  if (!opts.force) {
-    const existing = getSource(db, path);
-    if (existing && existing.source_mtime === mtimeISO) {
+  // Layered skip logic (Phase 2 + Option B). Order matters:
+  //   1. Path + (mtime, size) match what's on disk      → cached
+  //   2. mtime differs but size matches → maybe touch    → compare hash
+  //        - hash matches → update DB mtime, skip
+  //        - hash differs → re-index
+  //   3. Anything else (new file / size differs / no DB row) → ingest
+  //      In the ingest branch we also do dedup-A: if the file's hash
+  //      matches another already-indexed file, skip with skipped-duplicate
+  //      (unless caller passed includeDuplicates=true).
+  const existing = !opts.force ? getSource(db, path) : undefined;
+  if (existing) {
+    const sameSize = existing.size_bytes === sizeBytes;
+    const sameMtime = existing.mtime_ms != null && existing.mtime_ms === mtimeMs;
+    if (sameSize && sameMtime) {
+      // If the file had been marked missing on a previous scan but is
+      // back now with the same identity, clear the marker.
+      if (existing.missing_since != null) clearMissing(db, path);
       return { status: "skipped-cached", path };
+    }
+    if (sameSize && !sameMtime && existing.content_hash) {
+      // Cheap L2 check: only hash if size matches an existing record.
+      const h = await hashFile(path);
+      if (h === existing.content_hash) {
+        // Sync mtime so we don't hash again next pass.
+        upsertSource(db, {
+          ...(existing as SourceMetaRow),
+          source_mtime: mtimeISO,
+          mtime_ms: mtimeMs,
+          size_bytes: sizeBytes,
+          missing_since: null,
+        });
+        return { status: "skipped-mtime-touched", path };
+      }
     }
   }
 
   const t0 = Date.now();
+
+  // Compute hash up-front for the ingest path so we can (a) persist it
+  // and (b) detect dedup against other files.
+  const contentHash = await hashFile(path);
+
+  // Dedup-A: if a different path already indexed identical bytes, skip
+  // unless the caller said "let it through". The dedup decision happens
+  // *before* embedding so we save the costly part. We still record the
+  // path's mtime/size/hash so subsequent scans don't keep re-checking.
+  if (!opts.includeDuplicates) {
+    const dups = findByContentHash(db, contentHash, path);
+    const present = dups.find((d) => d.missing_since == null);
+    if (present) {
+      return {
+        status: "skipped-duplicate",
+        path,
+        duplicateOf: present.source_path,
+        contentHash,
+      };
+    }
+  }
 
   // 文本抽取失败时的软降级：加密 PDF / 损坏文件等，至少入 catalog 留存在感
   async function fallbackToCatalog(reason: string): Promise<IngestResult> {
@@ -92,6 +170,11 @@ export async function ingestFile(
         source_mtime: mtimeISO,
         indexed_at: new Date().toISOString(),
         chunk_count: 1,
+        mtime_ms: mtimeMs,
+        size_bytes: sizeBytes,
+        content_hash: contentHash,
+        missing_since: null,
+        watched_root: opts.watchedRoot ?? null,
       });
       return { status: "ingested", path, kind: "catalog", chunks: 1, ms: Date.now() - t0 };
     }
@@ -133,6 +216,11 @@ export async function ingestFile(
       source_mtime: mtimeISO,
       indexed_at: new Date().toISOString(),
       chunk_count: chunks.length,
+      mtime_ms: mtimeMs,
+      size_bytes: sizeBytes,
+      content_hash: contentHash,
+      missing_since: null,
+      watched_root: opts.watchedRoot ?? null,
     });
     return { status: "ingested", path, kind: "text", chunks: chunks.length, ms: Date.now() - t0 };
   } catch (e) {

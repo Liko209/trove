@@ -13,7 +13,13 @@ type StreamEvent = {
   errors?: number;
 };
 
-type ItemStatus = "ingested" | "skipped-cached" | "skipped-unsupported" | "error";
+type ItemStatus =
+  | "ingested"
+  | "skipped-cached"
+  | "skipped-mtime-touched"
+  | "skipped-duplicate"
+  | "skipped-unsupported"
+  | "error";
 
 type LogEntry = {
   ts: number;
@@ -49,6 +55,8 @@ function StatusChip({ status }: { status: Job["status"] }) {
 const LOG_ICON: Record<ItemStatus, { ch: string; cls: string }> = {
   ingested: { ch: "+", cls: "text-stone-500" },
   "skipped-cached": { ch: "↻", cls: "text-stone-400" },
+  "skipped-mtime-touched": { ch: "↻", cls: "text-stone-400" },
+  "skipped-duplicate": { ch: "=", cls: "text-amber-600" },
   "skipped-unsupported": { ch: "—", cls: "text-stone-400" },
   error: { ch: "✗", cls: "text-rose-600" },
 };
