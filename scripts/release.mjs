@@ -212,11 +212,18 @@ Signing + notarization (which would make this step unnecessary) is on the
 roadmap.`;
 
   step("Creating GitHub release");
+  // electron-builder emits both:
+  //   - the DMG (first-install download, listed in release notes)
+  //   - the ZIP + blockmap (used by electron-updater's Squirrel.Mac flow)
+  // Without the ZIP, auto-update fails with "ZIP file not provided".
   const dmg = `dist-electron/Bitrove-${newVersion}-arm64.dmg`;
-  const blockmap = `dist-electron/Bitrove-${newVersion}-arm64.dmg.blockmap`;
+  const dmgBlockmap = `dist-electron/Bitrove-${newVersion}-arm64.dmg.blockmap`;
+  const zip = `dist-electron/Bitrove-${newVersion}-arm64-mac.zip`;
+  const zipBlockmap = `dist-electron/Bitrove-${newVersion}-arm64-mac.zip.blockmap`;
   const yml = `dist-electron/latest-mac.yml`;
+  const assets = [dmg, dmgBlockmap, zip, zipBlockmap, yml];
   if (!dry) {
-    for (const f of [dmg, blockmap, yml]) {
+    for (const f of assets) {
       if (!existsSync(resolve(ROOT, f))) {
         throw new Error(`Build output missing: ${f}`);
       }
@@ -227,7 +234,7 @@ roadmap.`;
   try {
     run("gh", [
       "release", "create", `v${newVersion}`,
-      dmg, blockmap, yml,
+      ...assets,
       "--title", `Bitrove v${newVersion}`,
       "--notes-file", notesFile,
     ]);
