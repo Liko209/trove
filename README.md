@@ -7,6 +7,19 @@ AI tools like Claude Code via MCP and REST — all on-device. Embeddings, search
 and reranking happen locally using open-source models. Nothing is sent to the
 cloud.
 
+## Install (for users)
+
+[Latest release](https://github.com/Liko209/trove/releases/latest) → download
+the DMG → drag to Applications → run one Terminal command to clear the
+quarantine flag (because we don't have an Apple Developer ID yet):
+
+```
+xattr -cr /Applications/Trove.app
+```
+
+Full instructions, including troubleshooting "Trove is damaged", are in
+[INSTALL.md](./INSTALL.md).
+
 ## What's inside
 
 ```

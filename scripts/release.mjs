@@ -176,7 +176,6 @@ try {
 
   // ── release notes ──
   if (!notes) {
-    // try to summarise commits since previous tag
     const prevTag = tryRun("git", ["describe", "--tags", "--abbrev=0", `v${newVersion}^`]).stdout;
     if (prevTag) {
       const log = tryRun("git", ["log", "--pretty=format:- %s", `${prevTag}..v${newVersion}`]).stdout;
@@ -187,14 +186,40 @@ try {
       notes = "Maintenance release.";
     }
   }
+  // Append the standard "macOS says it's damaged" footer to every release.
+  // Until we ship a signed build, every download needs the xattr step.
+  notes += `
+
+---
+
+## Installing on macOS
+
+Trove is currently unsigned. macOS will block it twice unless you take one
+extra step:
+
+1. Download the DMG below, open it, drag **Trove** to Applications.
+2. Open Terminal and run:
+   \`\`\`
+   xattr -cr /Applications/Trove.app
+   \`\`\`
+3. Double-click Trove. It will open normally from now on.
+
+If you see "Trove is damaged and can't be opened", you skipped step 2 — it's
+not actually damaged, that's just macOS Gatekeeper's wording for any unsigned
+app downloaded from a browser. Run the \`xattr\` command above and try again.
+
+Signing + notarization (which would make this step unnecessary) is on the
+roadmap.`;
 
   step("Creating GitHub release");
   const dmg = `dist-electron/Trove-${newVersion}-arm64.dmg`;
   const blockmap = `dist-electron/Trove-${newVersion}-arm64.dmg.blockmap`;
   const yml = `dist-electron/latest-mac.yml`;
-  for (const f of [dmg, blockmap, yml]) {
-    if (!existsSync(resolve(ROOT, f))) {
-      throw new Error(`Build output missing: ${f}`);
+  if (!dry) {
+    for (const f of [dmg, blockmap, yml]) {
+      if (!existsSync(resolve(ROOT, f))) {
+        throw new Error(`Build output missing: ${f}`);
+      }
     }
   }
   const notesFile = `/tmp/trove-release-notes-${newVersion}.md`;
