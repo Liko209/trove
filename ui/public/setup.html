@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Trove — Setup</title>
+    <title>Bitrove — Setup</title>
     <style>
       :root {
         color-scheme: light;
@@ -144,9 +144,9 @@
   </head>
   <body>
     <main class="card">
-      <h1>Set up Trove</h1>
+      <h1>Set up Bitrove</h1>
       <p class="sub">
-        Trove uses small open-source AI models to make your documents searchable —
+        Bitrove uses small open-source AI models to make your documents searchable —
         all on this Mac. Download once, then everything stays local.
       </p>
 
@@ -162,10 +162,10 @@
     </main>
 
     <script>
-      const t = /** @type {any} */ (window).trove;
+      const t = /** @type {any} */ (window).bitrove;
       if (!t) {
         document.body.innerHTML =
-          '<div class="card"><h1>Setup unavailable</h1><p class="sub">The setup bridge did not load. Please relaunch Trove.</p></div>';
+          '<div class="card"><h1>Setup unavailable</h1><p class="sub">The setup bridge did not load. Please relaunch Bitrove.</p></div>';
       }
 
       const modelsEl = document.getElementById("models");
@@ -279,7 +279,7 @@
         const allReady = readyCount === catalog.length;
         continueBtn.disabled = !allReady;
         if (allReady) {
-          hintEl.textContent = "All models ready. Tap Continue to start Trove.";
+          hintEl.textContent = "All models ready. Tap Continue to start Bitrove.";
         } else {
           hintEl.textContent = readyCount + " of " + catalog.length + " models ready.";
         }
@@ -299,7 +299,7 @@
 
       continueBtn.addEventListener("click", async () => {
         continueBtn.disabled = true;
-        continueBtn.textContent = "Starting Trove…";
+        continueBtn.textContent = "Starting Bitrove…";
         await t.startServices();
       });
 

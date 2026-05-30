@@ -1,4 +1,4 @@
-// Connect AI agents to Trove.
+// Connect AI agents to Bitrove.
 // Covers the two paths a non-tech user needs:
 //   1. Claude Code — auto-detect ~/.claude.json and one-click install.
 //   2. Manual (any MCP / REST client) — show JSON to copy/paste.
@@ -73,7 +73,7 @@ export default function Connect() {
     ? JSON.stringify(
         {
           mcpServers: {
-            trove: info.suggested,
+            bitrove: info.suggested,
           },
         },
         null,
@@ -120,7 +120,7 @@ export default function Connect() {
                       not installed
                     </span>
                   )}
-                  {d.exists && d.hasTroveEntry && (
+                  {d.exists && d.hasBitroveEntry && (
                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-stone-100 text-stone-700">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                       Connected
@@ -133,10 +133,10 @@ export default function Connect() {
               </div>
               <button
                 onClick={() => install(d.path)}
-                disabled={busy === d.path || !d.exists && d.hasTroveEntry}
+                disabled={busy === d.path || !d.exists && d.hasBitroveEntry}
                 className={
                   "shrink-0 text-xs px-3 py-1.5 rounded-md font-medium border " +
-                  (d.exists && d.hasTroveEntry
+                  (d.exists && d.hasBitroveEntry
                     ? "bg-white border-stone-300 text-stone-700 hover:bg-stone-50"
                     : "bg-stone-900 text-white border-stone-900 hover:bg-stone-700") +
                   " disabled:opacity-50 disabled:cursor-not-allowed"
@@ -144,7 +144,7 @@ export default function Connect() {
               >
                 {busy === d.path
                   ? "Installing…"
-                  : d.hasTroveEntry
+                  : d.hasBitroveEntry
                     ? "Re-install"
                     : d.exists
                       ? "Install"
@@ -155,8 +155,8 @@ export default function Connect() {
         </div>
 
         <p className="text-xs text-stone-500 mt-3 leading-relaxed">
-          Trove will add itself as an MCP server in the chosen config. Any existing entries
-          stay untouched; a <code>.trove.bak</code> backup is created on first install.
+          Bitrove will add itself as an MCP server in the chosen config. Any existing entries
+          stay untouched; a <code>.bitrove.bak</code> backup is created on first install.
           You may need to restart Claude Code for the change to take effect.
         </p>
       </section>
@@ -178,7 +178,7 @@ export default function Connect() {
           REST API
         </h2>
         <p className="text-sm text-stone-600 mb-3">
-          Any tool that speaks HTTP can use Trove via REST. Bound to{" "}
+          Any tool that speaks HTTP can use Bitrove via REST. Bound to{" "}
           <code className="text-xs bg-stone-100 px-1 py-0.5 rounded">127.0.0.1</code> only.
         </p>
 

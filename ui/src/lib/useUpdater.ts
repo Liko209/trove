@@ -1,4 +1,4 @@
-// Subscribe to main-process updater events. When Trove runs in the browser
+// Subscribe to main-process updater events. When Bitrove runs in the browser
 // (not Electron), the bridge is undefined and we just stay idle forever.
 
 import { useEffect, useState } from "react";
@@ -30,7 +30,7 @@ export type UpdaterState =
     }
   | { phase: "error"; message: string };
 
-type TroveBridge = {
+type BitroveBridge = {
   updaterGetState: () => Promise<UpdaterState>;
   updaterCheck: () => Promise<void>;
   updaterDownload: () => Promise<void>;
@@ -46,7 +46,7 @@ export function useUpdater(): {
   isElectron: boolean;
 } {
   const [state, setState] = useState<UpdaterState>({ phase: "idle" });
-  const bridge = (window as unknown as { trove?: TroveBridge }).trove;
+  const bridge = (window as unknown as { bitrove?: BitroveBridge }).bitrove;
 
   useEffect(() => {
     if (!bridge) return;

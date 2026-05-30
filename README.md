@@ -1,23 +1,23 @@
-# Trove
+# Bitrove
 
 > *Your private knowledge layer for AI agents — everything on your Mac.*
 
-Trove indexes your local documents (PDFs, Word, Markdown) and presents them to
+Bitrove indexes your local documents (PDFs, Word, Markdown) and presents them to
 AI tools like Claude Code via MCP and REST — all on-device. Embeddings, search,
 and reranking happen locally using open-source models. Nothing is sent to the
 cloud.
 
 ## Install (for users)
 
-[Latest release](https://github.com/Liko209/trove/releases/latest) → download
+[Latest release](https://github.com/Liko209/bitrove/releases/latest) → download
 the DMG → drag to Applications → run one Terminal command to clear the
 quarantine flag (because we don't have an Apple Developer ID yet):
 
 ```
-xattr -cr /Applications/Trove.app
+xattr -cr /Applications/Bitrove.app
 ```
 
-Full instructions, including troubleshooting "Trove is damaged", are in
+Full instructions, including troubleshooting "Bitrove is damaged", are in
 [INSTALL.md](./INSTALL.md).
 
 ## What's inside
@@ -41,7 +41,7 @@ npm install
 npm run rebuild              # rebuild better-sqlite3 for Electron's node
 npm run vendor:llama         # fetch llama.cpp prebuilt arm64 + dylibs (~54 MB)
 npm run app:dist             # build admin + UI + electron + DMG
-# → dist-electron/Trove-0.0.1-arm64.dmg
+# → dist-electron/Bitrove-0.0.1-arm64.dmg
 ```
 
 ## Dev loop
@@ -86,6 +86,6 @@ Smart defaults skip code repos' source files automatically (only `README` and
 - Nothing is sent to the cloud. Embeddings + search + reranking are 100% local.
 - Models (`models/`) are fetched once from Hugging Face on first run; they stay
   on your Mac afterwards.
-- The index DB (`~/Library/Application Support/Trove/data/index.db`) only
+- The index DB (`~/Library/Application Support/Bitrove/data/index.db`) only
   contains chunks of files you explicitly chose to index.
 - This repository is open so anyone can audit those claims.

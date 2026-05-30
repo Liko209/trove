@@ -1,5 +1,5 @@
 // Resolve resource locations for both dev (running from source) and packaged
-// (running from inside Trove.app/Contents/Resources/).
+// (running from inside Bitrove.app/Contents/Resources/).
 //
 // Dev mode:
 //   - __dirname points at electron/.dist/main, the compiled output.
@@ -8,7 +8,7 @@
 //   - models live at <repo>/../models (phase0-spikes/models, shared with CLI).
 //
 // Packaged mode:
-//   - process.resourcesPath = Trove.app/Contents/Resources
+//   - process.resourcesPath = Bitrove.app/Contents/Resources
 //   - admin = Resources/app/admin/index.js (bundled by build script).
 //   - llama-server = Resources/bin/llama-server (vendored).
 //   - models live at userData/models (downloaded on first run).

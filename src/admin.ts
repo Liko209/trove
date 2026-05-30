@@ -47,8 +47,8 @@ const RERANK_URL = process.env.RERANK_URL ?? "http://127.0.0.1:8766";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // In packaged mode the bundled admin sits at Resources/app/admin/index.mjs
 // while the UI is at Resources/app/ui-dist, so the relative "../ui/dist"
-// path doesn't apply. services.ts passes the absolute path in TROVE_UI_DIST.
-const UI_DIST = process.env.TROVE_UI_DIST ?? resolve(__dirname, "../ui/dist");
+// path doesn't apply. services.ts passes the absolute path in BITROVE_UI_DIST.
+const UI_DIST = process.env.BITROVE_UI_DIST ?? resolve(__dirname, "../ui/dist");
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -63,7 +63,7 @@ app.use((req, res, next) => {
 });
 
 // ── /api/agents/claude-config ─────────────────────────────
-// Detect Claude Code config files & report whether Trove MCP is wired up.
+// Detect Claude Code config files & report whether Bitrove MCP is wired up.
 // Used by the Connect page in the UI.
 const HOME = process.env.HOME ?? "";
 const CLAUDE_CONFIG_PATHS = [
@@ -78,10 +78,10 @@ function mcpServerSpec(): {
 } {
   // The MCP server file location depends on whether we're packaged or dev.
   // Dev: src/server.ts via tsx. Packaged: bundled JS.
-  const isPackagedAdmin = process.env.TROVE_PACKAGED === "1";
+  const isPackagedAdmin = process.env.BITROVE_PACKAGED === "1";
   if (isPackagedAdmin) {
-    const adminRoot = process.env.TROVE_APP_ROOT;
-    if (!adminRoot) throw new Error("TROVE_APP_ROOT not set in packaged admin");
+    const adminRoot = process.env.BITROVE_APP_ROOT;
+    if (!adminRoot) throw new Error("BITROVE_APP_ROOT not set in packaged admin");
     return {
       command: process.execPath,
       args: [join(adminRoot, "mcp", "index.js")],
@@ -100,19 +100,19 @@ function mcpServerSpec(): {
 }
 
 app.get("/api/agents/claude-config", async (_req, res) => {
-  const detected: { path: string; exists: boolean; hasTroveEntry: boolean }[] = [];
+  const detected: { path: string; exists: boolean; hasBitroveEntry: boolean }[] = [];
   for (const p of CLAUDE_CONFIG_PATHS) {
     let exists = false;
-    let hasTroveEntry = false;
+    let hasBitroveEntry = false;
     if (existsSync(p)) {
       exists = true;
       try {
         const raw = await import("node:fs/promises").then((m) => m.readFile(p, "utf8"));
         const j = JSON.parse(raw);
-        hasTroveEntry = Boolean(j?.mcpServers?.trove || j?.mcpServers?.["local-kb"]);
+        hasBitroveEntry = Boolean(j?.mcpServers?.bitrove || j?.mcpServers?.["local-kb"]);
       } catch {}
     }
-    detected.push({ path: p, exists, hasTroveEntry });
+    detected.push({ path: p, exists, hasBitroveEntry });
   }
   res.json({ detected, suggested: mcpServerSpec() });
 });
@@ -131,16 +131,16 @@ app.post("/api/agents/claude-install", async (req, res) => {
     }
   }
   const mcpServers = ((config.mcpServers as Record<string, unknown>) ?? {}) as Record<string, unknown>;
-  mcpServers.trove = mcpServerSpec();
+  mcpServers.bitrove = mcpServerSpec();
   config.mcpServers = mcpServers;
   // backup
   if (existsSync(targetPath)) {
-    await fs.copyFile(targetPath, targetPath + ".trove.bak");
+    await fs.copyFile(targetPath, targetPath + ".bitrove.bak");
   } else {
     await fs.mkdir(targetPath.split("/").slice(0, -1).join("/"), { recursive: true });
   }
   await fs.writeFile(targetPath, JSON.stringify(config, null, 2));
-  res.json({ ok: true, backupCreated: existsSync(targetPath + ".trove.bak") });
+  res.json({ ok: true, backupCreated: existsSync(targetPath + ".bitrove.bak") });
 });
 
 // ── /api/health ───────────────────────────────────────────

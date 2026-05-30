@@ -1,5 +1,5 @@
 // electron-vite config:
-//   - main:    Trove's Electron main process (electron/main.ts)
+//   - main:    Bitrove's Electron main process (electron/main.ts)
 //   - preload: IPC bridge (electron/preload.ts)
 //   - renderer: NOT managed here. The renderer is loaded by Electron via
 //     loadURL() pointing at the admin server (Express, serves ui/dist).

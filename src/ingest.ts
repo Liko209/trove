@@ -167,7 +167,7 @@ async function main() {
 // This avoids the entry-point guard mis-firing when the module is bundled
 // (e.g. inside the packaged admin server, where import.meta.url and
 // process.argv[1] both resolve to the bundle path).
-if (process.env.TROVE_CLI === "ingest") {
+if (process.env.BITROVE_CLI === "ingest") {
   main().catch((e) => {
     console.error(e);
     process.exit(1);

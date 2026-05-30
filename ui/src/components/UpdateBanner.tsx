@@ -42,7 +42,7 @@ export default function UpdateBanner() {
         <div className="max-w-7xl mx-auto px-6 py-2 flex items-center gap-3">
           <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
           <span className="font-medium">
-            Trove {state.info.version} is available.
+            Bitrove {state.info.version} is available.
           </span>
           {state.info.releaseDate && (
             <span className="text-stone-500">
@@ -66,7 +66,7 @@ export default function UpdateBanner() {
       <div className="bg-stone-100 border-b border-stone-200 text-stone-800 text-xs">
         <div className="max-w-7xl mx-auto px-6 py-2 flex items-center gap-3">
           <div className="shrink-0 w-3 h-3 border-2 border-stone-300 border-t-stone-700 rounded-full animate-spin" />
-          <span className="font-medium">Downloading Trove {state.info.version}…</span>
+          <span className="font-medium">Downloading Bitrove {state.info.version}…</span>
           <span className="tabular-nums">{pct}%</span>
           <span className="text-stone-500 tabular-nums">
             {bytes(state.transferred)} / {bytes(state.total)} · {speed(state.bytesPerSecond)}
@@ -85,7 +85,7 @@ export default function UpdateBanner() {
         <div className="max-w-7xl mx-auto px-6 py-2 flex items-center gap-3">
           <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
           <span className="font-medium">
-            Trove {state.info.version} is ready to install.
+            Bitrove {state.info.version} is ready to install.
           </span>
           {!state.canQuitAndInstall && (
             <span className="text-stone-500 hidden sm:inline">

@@ -1,31 +1,31 @@
-# Installing Trove on macOS
+# Installing Bitrove on macOS
 
-Trove ships as an unsigned `.dmg`. macOS will block it on first launch unless
+Bitrove ships as an unsigned `.dmg`. macOS will block it on first launch unless
 you take **one extra step** to clear the "downloaded from the internet"
-quarantine flag. This is a one-time fix per install — after that, Trove opens
+quarantine flag. This is a one-time fix per install — after that, Bitrove opens
 normally.
 
 ## Step-by-step
 
-1. **Download** the DMG from the [latest release page](https://github.com/Liko209/trove/releases/latest).
-2. **Open the DMG** and drag **Trove** into the Applications folder.
+1. **Download** the DMG from the [latest release page](https://github.com/Liko209/bitrove/releases/latest).
+2. **Open the DMG** and drag **Bitrove** into the Applications folder.
 3. **Open Terminal** (Applications → Utilities → Terminal) and run:
    ```
-   xattr -cr /Applications/Trove.app
+   xattr -cr /Applications/Bitrove.app
    ```
-4. **Double-click Trove** in Applications. It will open and walk you through setup.
+4. **Double-click Bitrove** in Applications. It will open and walk you through setup.
 
-## "Trove is damaged and can't be opened"
+## "Bitrove is damaged and can't be opened"
 
 If you see this dialog, it means you skipped step 3. The app **is not** actually
 damaged — that's just macOS's generic warning for any unsigned app downloaded
 from a browser. Open Terminal and run:
 
 ```
-xattr -cr /Applications/Trove.app
+xattr -cr /Applications/Bitrove.app
 ```
 
-Then try opening Trove again. It will work.
+Then try opening Bitrove again. It will work.
 
 ## Why this is necessary
 
@@ -40,6 +40,6 @@ Apple Developer Program membership ($99/year). That's on the roadmap.
 
 ## Upgrading
 
-Once Trove is installed, **subsequent versions auto-update** through the
+Once Bitrove is installed, **subsequent versions auto-update** through the
 built-in updater. You won't need to repeat the `xattr` step for updates — only
 fresh installs.

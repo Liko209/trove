@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { configPath } from "./paths.ts";
 
-export type TroveConfig = {
+export type BitroveConfig = {
   // First folder the user chose during onboarding (auto-scanned once on first run)
   sources: string[];
   // Optional extra exclude substrings beyond the built-in defaults
@@ -15,15 +15,15 @@ export type TroveConfig = {
   onboarded: boolean;
 };
 
-const DEFAULT_CONFIG: TroveConfig = {
+const DEFAULT_CONFIG: BitroveConfig = {
   sources: [],
   excludes: [],
   onboarded: false,
 };
 
-let cache: TroveConfig | null = null;
+let cache: BitroveConfig | null = null;
 
-export async function readConfig(): Promise<TroveConfig> {
+export async function readConfig(): Promise<BitroveConfig> {
   if (cache) return cache;
   const p = configPath();
   if (!existsSync(p)) {
@@ -40,7 +40,7 @@ export async function readConfig(): Promise<TroveConfig> {
   }
 }
 
-export async function writeConfig(partial: Partial<TroveConfig>): Promise<TroveConfig> {
+export async function writeConfig(partial: Partial<BitroveConfig>): Promise<BitroveConfig> {
   const current = await readConfig();
   const next = { ...current, ...partial };
   const p = configPath();

@@ -57,7 +57,7 @@ export default function App() {
             to="/"
             className="font-semibold text-stone-900 tracking-tight hover:text-stone-700 transition-colors app-no-drag"
           >
-            Trove
+            Bitrove
           </Link>
           <nav className="flex gap-1 app-no-drag">
             {NAV.map((n) => (

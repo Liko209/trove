@@ -28,7 +28,7 @@ function logPath(): string {
     mkdirSync(dir, { recursive: true });
     LOG_FILE = join(dir, "services.log");
   } catch {
-    LOG_FILE = "/tmp/trove-services.log";
+    LOG_FILE = "/tmp/bitrove-services.log";
   }
   return LOG_FILE;
 }
@@ -130,7 +130,7 @@ export async function startAdmin(): Promise<void> {
     // admin's __dirname / "../ui/dist" resolution doesn't work in packaged
     // mode because Resources/app/admin/index.mjs is far from the UI bundle
     // (Resources/app/ui-dist/). Tell it explicitly.
-    TROVE_UI_DIST: uiDistDir(),
+    BITROVE_UI_DIST: uiDistDir(),
   };
 
   // In packaged mode the admin entry runs inside Electron's bundled Node;

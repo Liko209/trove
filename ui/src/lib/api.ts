@@ -87,7 +87,7 @@ async function j<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
 }
 
 export type ClaudeConfigInfo = {
-  detected: { path: string; exists: boolean; hasTroveEntry: boolean }[];
+  detected: { path: string; exists: boolean; hasBitroveEntry: boolean }[];
   suggested: { command: string; args: string[]; env?: Record<string, string> };
 };
 

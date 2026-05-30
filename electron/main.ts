@@ -1,4 +1,4 @@
-// Trove main process.
+// Bitrove main process.
 //
 // Lifecycle:
 //   1. Single-instance lock
@@ -14,9 +14,29 @@ import { appendFileSync, mkdirSync } from "node:fs";
 
 // Electron uses the package.json `name` field for userData by default, which
 // gives us ~/Library/Application Support/local-kb-demo. We want
-// ~/Library/Application Support/Trove. Setting the app name before app.ready
+// ~/Library/Application Support/Bitrove. Setting the app name before app.ready
 // fires moves all path lookups to use it.
-app.setName("Trove");
+app.setName("Bitrove");
+
+// One-time migration: this app shipped as "Trove" for v0.0.1–v0.0.3 before
+// the bitrove.ai domain was registered. Move the user's models, index,
+// logs and config out of ~/Library/Application Support/Trove/ into the
+// new Bitrove root so those users don't have to re-download 870 MB.
+import { homedir } from "node:os";
+import { renameSync, existsSync } from "node:fs";
+function migrateFromTrove() {
+  try {
+    const oldDir = join(homedir(), "Library", "Application Support", "Trove");
+    const newDir = join(homedir(), "Library", "Application Support", "Bitrove");
+    if (existsSync(oldDir) && !existsSync(newDir)) {
+      renameSync(oldDir, newDir);
+      bootLog(`migrated ${oldDir} → ${newDir}`);
+    }
+  } catch (err) {
+    bootLog(`Trove → Bitrove migration skipped: ${(err as Error).message}`);
+  }
+}
+migrateFromTrove();
 
 // Boot trace so we can see in packaged mode how far main process got.
 function bootLog(msg: string) {
@@ -29,7 +49,7 @@ function bootLog(msg: string) {
     );
   } catch {
     try {
-      appendFileSync("/tmp/trove-boot.log", `[${new Date().toISOString()}] FALLBACK ${msg}\n`);
+      appendFileSync("/tmp/bitrove-boot.log", `[${new Date().toISOString()}] FALLBACK ${msg}\n`);
     } catch {}
   }
 }
@@ -188,7 +208,7 @@ async function createWindow() {
     height: 820,
     minWidth: 1000,
     minHeight: 700,
-    title: "Trove",
+    title: "Bitrove",
     backgroundColor: "#fafaf9",
     titleBarStyle: "hiddenInset",
     show: false,

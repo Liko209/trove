@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Trove release pipeline — one command goes from "main is clean" to
+// Bitrove release pipeline — one command goes from "main is clean" to
 // "users on older versions will see an UpdateBanner".
 //
 // Usage:
@@ -194,17 +194,17 @@ try {
 
 ## Installing on macOS
 
-Trove is currently unsigned. macOS will block it twice unless you take one
+Bitrove is currently unsigned. macOS will block it twice unless you take one
 extra step:
 
-1. Download the DMG below, open it, drag **Trove** to Applications.
+1. Download the DMG below, open it, drag **Bitrove** to Applications.
 2. Open Terminal and run:
    \`\`\`
-   xattr -cr /Applications/Trove.app
+   xattr -cr /Applications/Bitrove.app
    \`\`\`
-3. Double-click Trove. It will open normally from now on.
+3. Double-click Bitrove. It will open normally from now on.
 
-If you see "Trove is damaged and can't be opened", you skipped step 2 — it's
+If you see "Bitrove is damaged and can't be opened", you skipped step 2 — it's
 not actually damaged, that's just macOS Gatekeeper's wording for any unsigned
 app downloaded from a browser. Run the \`xattr\` command above and try again.
 
@@ -212,8 +212,8 @@ Signing + notarization (which would make this step unnecessary) is on the
 roadmap.`;
 
   step("Creating GitHub release");
-  const dmg = `dist-electron/Trove-${newVersion}-arm64.dmg`;
-  const blockmap = `dist-electron/Trove-${newVersion}-arm64.dmg.blockmap`;
+  const dmg = `dist-electron/Bitrove-${newVersion}-arm64.dmg`;
+  const blockmap = `dist-electron/Bitrove-${newVersion}-arm64.dmg.blockmap`;
   const yml = `dist-electron/latest-mac.yml`;
   if (!dry) {
     for (const f of [dmg, blockmap, yml]) {
@@ -222,13 +222,13 @@ roadmap.`;
       }
     }
   }
-  const notesFile = `/tmp/trove-release-notes-${newVersion}.md`;
+  const notesFile = `/tmp/bitrove-release-notes-${newVersion}.md`;
   writeFileSync(notesFile, notes);
   try {
     run("gh", [
       "release", "create", `v${newVersion}`,
       dmg, blockmap, yml,
-      "--title", `Trove v${newVersion}`,
+      "--title", `Bitrove v${newVersion}`,
       "--notes-file", notesFile,
     ]);
   } finally {
@@ -241,7 +241,7 @@ roadmap.`;
   if (repoUrl) {
     console.log(`   ${repoUrl}/releases/tag/v${newVersion}`);
   }
-  console.log(`\nUsers on older Trove versions will see an UpdateBanner within 6 hours,`);
+  console.log(`\nUsers on older Bitrove versions will see an UpdateBanner within 6 hours,`);
   console.log(`or on their next launch (whichever comes first).`);
 } catch (e) {
   console.error(`\n✗ Release failed: ${e.message}`);

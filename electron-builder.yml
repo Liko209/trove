@@ -1,6 +1,6 @@
-appId: app.trove.local
-productName: Trove
-copyright: Copyright © 2026 Trove
+appId: ai.bitrove.macos
+productName: Bitrove
+copyright: Copyright © 2026 Bitrove
 
 directories:
   buildResources: build
@@ -72,5 +72,5 @@ dmg:
 publish:
   - provider: github
     owner: Liko209
-    repo: trove
+    repo: bitrove
     releaseType: release

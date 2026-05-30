@@ -22,7 +22,7 @@ type ModelStatus = {
   error?: string;
 };
 
-const trove = {
+const bitrove = {
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke("dialog:pickFolder"),
   getServicesState: (): Promise<Record<string, ServiceState>> =>
     ipcRenderer.invoke("services:state"),
@@ -71,6 +71,6 @@ const trove = {
   },
 };
 
-contextBridge.exposeInMainWorld("trove", trove);
+contextBridge.exposeInMainWorld("bitrove", bitrove);
 
-export type TroveBridge = typeof trove;
+export type BitroveBridge = typeof bitrove;

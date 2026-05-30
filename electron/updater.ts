@@ -2,7 +2,7 @@
 //
 // IMPORTANT: macOS code-signing constraint
 //   electron-updater's "restart-to-install" flow uses Squirrel.Mac, which
-//   requires a code-signed and notarized .app. While Trove is unsigned, the
+//   requires a code-signed and notarized .app. While Bitrove is unsigned, the
 //   user lifecycle is:
 //     1. App checks for updates on startup (and on demand)
 //     2. App auto-downloads the new DMG when one is available
@@ -52,7 +52,7 @@ function logFilePath(): string {
     LOG_FILE_PATH = join(dir, "updater.log");
   } catch {
     // Fall back to /tmp so we at least see something during early boot errors.
-    LOG_FILE_PATH = "/tmp/trove-updater.log";
+    LOG_FILE_PATH = "/tmp/bitrove-updater.log";
   }
   return LOG_FILE_PATH;
 }
