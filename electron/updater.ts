@@ -75,8 +75,12 @@ const FILE_LOGGER = {
   debug: (...a: unknown[]) => logLine("DEBUG", a),
 };
 
-// Flip this to true when shipping a signed/notarized build.
-const QUIT_AND_INSTALL_AVAILABLE = false;
+// Squirrel.Mac (electron-updater's backend) works on unsigned builds —
+// it just extracts the downloaded ZIP next to the running app and swaps
+// the bundle on quit. We keep this on so the in-app "Install update"
+// button does the right thing; once we add Developer ID signing later,
+// the same path becomes Gatekeeper-clean automatically.
+const QUIT_AND_INSTALL_AVAILABLE = true;
 
 export type UpdaterState =
   | { phase: "idle" }
