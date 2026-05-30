@@ -13,6 +13,13 @@ resources/bin/
 .vscode/
 .DS_Store
 
+# Locally-installed Agent Skills (vercel-labs `skills add` CLI).
+# These live alongside the project but are per-developer and shouldn't
+# leak into the repo or the packaged app.
+.agents/
+.claude/
+skills-lock.json
+
 # Build outputs
 node_modules/
 ui/node_modules/
