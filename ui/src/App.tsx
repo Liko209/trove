@@ -21,8 +21,7 @@ const NAV = [
 
 function NavLink({ to, label, badge }: { to: string; label: string; badge?: number }) {
   const { pathname } = useLocation();
-  const isActive =
-    to === "/" ? pathname === "/" : pathname === to || pathname.startsWith(to + "/");
+  const isActive = pathname === to || pathname.startsWith(to + "/");
   return (
     <Link
       to={to}
@@ -47,7 +46,6 @@ function NavLink({ to, label, badge }: { to: string; label: string; badge?: numb
 }
 
 export default function App() {
-  const { active } = useJobs(3000);
   return (
     <div className="min-h-full flex flex-col">
       <div className="sticky top-0 z-10">
@@ -65,11 +63,7 @@ export default function App() {
             </Link>
             <nav className="flex gap-1 app-no-drag">
               {NAV.map((n) => (
-                <NavLink
-                  key={n.to}
-                  {...n}
-                  badge={n.to === "/jobs" ? active.length : undefined}
-                />
+                <NavLink key={n.to} {...n} />
               ))}
             </nav>
             <div className="ml-auto flex items-center gap-4 app-no-drag">
@@ -89,18 +83,18 @@ export default function App() {
       </div>
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<Navigate to="/library" replace />} />
           <Route path="/library" element={<Library />} />
           <Route path="/add" element={<Add />} />
           <Route path="/agents" element={<Agents />} />
-          {/* Power-user pages — reachable by URL, not in nav */}
+          <Route path="/settings" element={<Settings />} />
+          {/* Reachable by URL or contextual link, not in primary nav */}
           <Route path="/sources" element={<Sources />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/settings" element={<Settings />} />
-          {/* Old / typo'd paths → Home */}
+          {/* Legacy paths */}
           <Route path="/connect" element={<Navigate to="/agents" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/library" replace />} />
         </Routes>
       </main>
     </div>
