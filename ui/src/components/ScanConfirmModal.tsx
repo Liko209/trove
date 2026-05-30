@@ -1,10 +1,12 @@
 // Modal shown after the user picks a folder to add. It performs a fast
 // pre-scan via /api/source-preview and tells the user exactly what will
-// be indexed before they commit.
+// be indexed before they commit. Also flags permission errors up-front so
+// users aren't dropped into a half-finished scan that quietly stops.
 
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { bytes, formatDurationSeconds, shortPath } from "../lib/format.ts";
+import { openSettingsFor, usePermission } from "./PermissionStatus.tsx";
 
 type Preview = Awaited<ReturnType<typeof api.sourcePreview>>;
 
@@ -19,15 +21,23 @@ export default function ScanConfirmModal({
 }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const { perm, recheck } = usePermission(path);
 
   useEffect(() => {
     setPreview(null);
     setErr(null);
+    // Only attempt the preview when we know we have access. If the user
+    // grants permission and clicks Re-check, the new "granted" state will
+    // re-fire this effect.
+    if (perm.state !== "granted") return;
     api
       .sourcePreview(path)
       .then(setPreview)
       .catch((e) => setErr((e as Error).message));
-  }, [path]);
+  }, [path, perm.state]);
+
+  const denied = perm.state === "denied";
+  const checking = perm.state === "checking";
 
   const totalIndexable = preview ? preview.text + preview.catalog : 0;
   const ratio = preview && preview.totalScanned > 0
@@ -57,14 +67,38 @@ export default function ScanConfirmModal({
             </div>
           )}
 
-          {!preview && !err && (
-            <div className="flex items-center gap-3 py-6 text-sm text-stone-500">
-              <div className="h-4 w-4 border-2 border-stone-300 border-t-stone-700 rounded-full animate-spin" />
-              Looking inside this folder…
+          {denied && (
+            <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-sm">
+              <div className="font-medium mb-1">macOS is blocking access to this folder.</div>
+              <div className="text-xs text-rose-700 mb-3">
+                Open System Settings → Privacy & Security, find Bitrove in the relevant
+                Files and Folders section, and toggle it on. Then click "Re-check" below.
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => openSettingsFor("files")}
+                  className="text-xs px-3 py-1.5 rounded-md font-medium bg-stone-900 text-white border border-stone-900 hover:bg-stone-700"
+                >
+                  Open Settings
+                </button>
+                <button
+                  onClick={recheck}
+                  className="text-xs px-3 py-1.5 rounded-md font-medium bg-white text-stone-700 border border-stone-300 hover:bg-stone-50"
+                >
+                  Re-check
+                </button>
+              </div>
             </div>
           )}
 
-          {preview && (
+          {(checking || (perm.state === "granted" && !preview)) && !err && (
+            <div className="flex items-center gap-3 py-6 text-sm text-stone-500">
+              <div className="h-4 w-4 border-2 border-stone-300 border-t-stone-700 rounded-full animate-spin" />
+              {checking ? "Checking access…" : "Looking inside this folder…"}
+            </div>
+          )}
+
+          {preview && perm.state === "granted" && (
             <>
               <div className="grid grid-cols-3 gap-3 mb-5">
                 <Stat label="Documents" value={preview.text.toLocaleString()} sub="full text" />
@@ -137,7 +171,7 @@ export default function ScanConfirmModal({
             </button>
             <button
               onClick={onConfirm}
-              disabled={!preview || totalIndexable === 0}
+              disabled={!preview || totalIndexable === 0 || perm.state !== "granted"}
               className="px-3 py-1.5 rounded-md text-sm font-medium bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Start indexing

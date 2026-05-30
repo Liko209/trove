@@ -254,3 +254,119 @@ export default function Add() {
     </div>
   );
 }
+
+/* ── RecommendedCard ────────────────────────────────────────── */
+
+function RecommendedCard({
+  rec,
+  abs,
+  already,
+  busy,
+  onAdd,
+}: {
+  rec: Recommended;
+  abs: string;
+  already: boolean;
+  busy: boolean;
+  onAdd: () => void;
+}) {
+  const { perm, recheck } = usePermission(abs);
+  const settingsKey = settingsSectionForLabel(rec.label);
+  const denied = perm.state === "denied";
+  const missing = perm.state === "not-found";
+
+  // Visual mood of the card adapts to the state.
+  const tone = denied
+    ? "border-rose-200 bg-rose-50/50 hover:bg-rose-50"
+    : missing
+      ? "border-stone-200 bg-stone-50 opacity-60"
+      : "border-stone-200 bg-white hover:border-stone-400 hover:shadow-sm";
+
+  return (
+    <div
+      className={
+        "block w-full text-left p-4 rounded-xl border transition " + tone
+      }
+    >
+      <div className="flex items-center gap-4">
+        <div className="text-2xl shrink-0">{rec.icon}</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="font-medium text-stone-900">{rec.label}</div>
+            {already && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Already added
+              </span>
+            )}
+            <PermissionPill perm={perm} />
+          </div>
+          <div className="text-xs text-stone-500 mt-0.5 truncate">{rec.description}</div>
+          <div className="text-[11px] text-stone-400 mt-0.5 font-mono truncate">
+            {shortPath(abs)}
+          </div>
+          {denied && (
+            <div className="text-xs text-rose-700 mt-2">
+              macOS is blocking Bitrove from reading this folder. Grant access in
+              System Settings, then come back here and tap "Re-check".
+            </div>
+          )}
+          {missing && (
+            <div className="text-xs text-stone-500 mt-2">
+              This folder doesn't exist on this Mac. You can skip it.
+            </div>
+          )}
+        </div>
+
+        <div className="shrink-0 flex flex-col items-stretch gap-1.5">
+          {denied ? (
+            <>
+              <button
+                onClick={() => openSettingsFor(settingsKey)}
+                className="text-xs px-3 py-1.5 rounded-md font-medium bg-stone-900 text-white border border-stone-900 hover:bg-stone-700"
+              >
+                Open Settings
+              </button>
+              <button
+                onClick={recheck}
+                className="text-xs px-3 py-1 rounded-md font-medium bg-white text-stone-700 border border-stone-300 hover:bg-stone-50"
+              >
+                Re-check
+              </button>
+            </>
+          ) : missing ? (
+            <button
+              onClick={recheck}
+              className="text-xs px-3 py-1 rounded-md font-medium bg-white text-stone-700 border border-stone-300 hover:bg-stone-50"
+            >
+              Re-check
+            </button>
+          ) : (
+            <button
+              onClick={onAdd}
+              disabled={busy || perm.state !== "granted"}
+              className="text-xs px-3 py-1.5 rounded-md font-medium bg-stone-900 text-white border border-stone-900 hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {already ? "Re-index" : "Add"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function settingsSectionForLabel(label: string): string | undefined {
+  switch (label) {
+    case "Documents folder":
+      return "documents";
+    case "Desktop":
+      return "desktop";
+    case "Downloads":
+      return "downloads";
+    case "iCloud Drive":
+      return "icloud";
+    default:
+      return "files";
+  }
+}
