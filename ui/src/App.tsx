@@ -8,7 +8,6 @@ import Agents from "./pages/Agents.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import { useJobs } from "./lib/useJobs.ts";
 import { GlobalJobIndicator } from "./components/GlobalJobIndicator.tsx";
-import UpdateBanner from "./components/UpdateBanner.tsx";
 
 const NAV = [
   { to: "/", label: "Home" },
@@ -50,7 +49,6 @@ export default function App() {
   return (
     <div className="min-h-full flex flex-col">
       <div className="sticky top-0 z-10">
-        <UpdateBanner />
         <header className="border-b border-stone-200 bg-white app-drag">
           <div className="max-w-7xl mx-auto pl-24 pr-6 py-3 flex items-center gap-6">
             <Link

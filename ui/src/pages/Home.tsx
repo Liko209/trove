@@ -18,6 +18,10 @@ import {
 } from "../lib/api.ts";
 import { formatDurationSeconds } from "../lib/format.ts";
 import { useJobs } from "../lib/useJobs.ts";
+import {
+  UpdateAvailableCard,
+  AboutBitrove,
+} from "../components/UpdateSection.tsx";
 
 type ModelStatus = {
   id: "embed" | "rerank";
@@ -218,6 +222,8 @@ export default function Home() {
         </div>
       )}
 
+      <UpdateAvailableCard />
+
       {active.length > 0 && (
         <section className="mb-8">
           <h2 className="text-sm font-semibold text-stone-900 uppercase tracking-wider mb-3">
@@ -334,6 +340,8 @@ export default function Home() {
           </div>
         </Link>
       </section>
+
+      <AboutBitrove />
     </div>
   );
 }

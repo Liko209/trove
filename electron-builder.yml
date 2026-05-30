@@ -50,6 +50,10 @@ extraResources:
     to: app/node_modules
     filter:
       - "**/*"
+      # .bin contains symlinks to dev dependency CLIs (tsx, vite, electron…)
+      # that we've filtered out below — leaving the dangling symlinks behind
+      # breaks `xattr -cr` on the .app bundle. Drop the whole .bin tree.
+      - "!.bin/**"
       # docs / metadata
       - "!**/*.{md,markdown,d.ts,map}"
       - "!**/{CHANGELOG*,README*,readme*,LICENSE*,LICENCE*,license*,NOTICE*}"

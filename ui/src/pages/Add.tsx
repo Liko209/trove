@@ -11,6 +11,11 @@ import { useNavigate } from "react-router-dom";
 import { api, type SourceRow } from "../lib/api.ts";
 import { shortPath } from "../lib/format.ts";
 import ScanConfirmModal from "../components/ScanConfirmModal.tsx";
+import {
+  PermissionPill,
+  openSettingsFor,
+  usePermission,
+} from "../components/PermissionStatus.tsx";
 
 type Recommended = { label: string; path: string; icon: string; description: string };
 
@@ -171,32 +176,14 @@ export default function Add() {
             const abs = expandHome(r.path);
             const already = indexedPaths.has(abs);
             return (
-              <button
+              <RecommendedCard
                 key={r.path}
-                onClick={() => setConfirmPath(abs)}
-                disabled={busy === abs}
-                className="w-full text-left p-4 rounded-xl bg-white border border-stone-200 hover:border-stone-400 hover:shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="text-2xl shrink-0">{r.icon}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <div className="font-medium text-stone-900">{r.label}</div>
-                      {already && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          Already added
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-stone-500 mt-0.5 truncate">{r.description}</div>
-                    <div className="text-[11px] text-stone-400 mt-0.5 font-mono truncate">{shortPath(abs)}</div>
-                  </div>
-                  <div className="text-stone-400 text-sm shrink-0">
-                    {already ? "Re-index" : "Add"}
-                  </div>
-                </div>
-              </button>
+                rec={r}
+                abs={abs}
+                already={already}
+                busy={busy === abs}
+                onAdd={() => setConfirmPath(abs)}
+              />
             );
           })}
         </div>
