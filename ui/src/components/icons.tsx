@@ -95,6 +95,17 @@ export function PaperclipIcon({ size = 20, className = "" }: IconProps) {
   );
 }
 
+// Disclosure chevron used for tree expand/collapse. Rotates 90deg via
+// CSS when the parent is expanded; the icon itself draws pointing
+// right.
+export function ChevronRightIcon({ size = 12, className = "" }: IconProps) {
+  return (
+    <svg {...base(size, className)} strokeWidth={2.5}>
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
 export function SettingsGearIcon({ size = 18, className = "" }: IconProps) {
   return (
     <svg {...base(size, className)}>

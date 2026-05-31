@@ -257,7 +257,7 @@ export default function JobProgress({
         {/* Progress bar — single neutral fill; status conveyed by chip + dot */}
         <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
           <div
-            className="h-full bg-stone-900 transition-all"
+            className="h-full bg-stone-900 rounded-full transition-all"
             style={{ width: `${pct}%` }}
           />
         </div>

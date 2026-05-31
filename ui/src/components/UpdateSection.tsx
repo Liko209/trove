@@ -210,7 +210,7 @@ export function UpdateFooter() {
           <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
             {state.phase === "downloading" ? (
               <div
-                className="h-full bg-stone-900 transition-all duration-300"
+                className="h-full bg-stone-900 rounded-full transition-all duration-300"
                 style={{ width: `${Math.round(state.percent || 0)}%` }}
               />
             ) : (

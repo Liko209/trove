@@ -124,7 +124,7 @@ function ActiveJobCard({ job }: { job: Job }) {
         <Metric label="Indexed" value={`+${job.ingested}`} />
       </div>
       <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
-        <div className="h-full bg-stone-900 transition-all" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-stone-900 rounded-full transition-all" style={{ width: `${pct}%` }} />
       </div>
     </Link>
   );

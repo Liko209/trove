@@ -21,6 +21,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { bytes } from "../lib/format.ts";
+import { ChevronRightIcon } from "./icons.tsx";
 
 type Node = {
   path: string;
@@ -319,10 +320,17 @@ function TreeRow({
         <button
           type="button"
           onClick={onToggleExpanded}
-          className="shrink-0 w-4 h-4 text-stone-400 hover:text-stone-900 flex items-center justify-center"
+          className="shrink-0 w-5 h-5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded flex items-center justify-center transition"
           title={isExpanded ? "Collapse" : "Expand"}
         >
-          <span className={isExpanded ? "rotate-90 transition" : "transition"}>▸</span>
+          <span
+            className={
+              "inline-flex transition-transform duration-150 " +
+              (isExpanded ? "rotate-90" : "")
+            }
+          >
+            <ChevronRightIcon size={14} />
+          </span>
         </button>
 
         <input

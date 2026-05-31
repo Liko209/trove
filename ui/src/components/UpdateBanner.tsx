@@ -72,7 +72,7 @@ export default function UpdateBanner() {
             {bytes(state.transferred)} / {bytes(state.total)} · {speed(state.bytesPerSecond)}
           </span>
           <div className="ml-auto h-1 w-32 bg-stone-200 rounded-full overflow-hidden">
-            <div className="h-full bg-stone-900 transition-all" style={{ width: `${pct}%` }} />
+            <div className="h-full bg-stone-900 rounded-full transition-all" style={{ width: `${pct}%` }} />
           </div>
         </div>
       </div>
