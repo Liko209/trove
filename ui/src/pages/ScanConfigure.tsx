@@ -21,6 +21,7 @@ import {
 } from "../components/PermissionStatus.tsx";
 import { bytes, formatDurationSeconds, shortPath } from "../lib/format.ts";
 import { BookIcon, FileIcon, FolderOpenIcon } from "../components/icons.tsx";
+import FolderTreePicker from "../components/FolderTreePicker.tsx";
 
 type Preview = Awaited<ReturnType<typeof api.sourcePreview>>;
 
@@ -32,99 +33,60 @@ export default function ScanConfigure() {
 
   const [preview, setPreview] = useState<Preview | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  // Per-scan overrides — same shape as the old modal.
+  // Per-scan overrides.
   const [overrides, setOverrides] = useState<Set<string>>(new Set());
-  const [excludedSubdirs, setExcludedSubdirs] = useState<Set<string>>(new Set());
+  // Absolute path prefixes excluded by the user via the tree picker.
+  // Sent verbatim to the walker as `excludes` — works for any depth
+  // because the walker just substring-matches.
+  const [excludedTreePaths, setExcludedTreePaths] = useState<Set<string>>(new Set());
   const [watchAfter, setWatchAfter] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-
-  // Drill: when the user wants to go deeper than the auto-summary's
-  // top-6 subdirs, we fetch the actual immediate-child listing and
-  // let them check/uncheck each, just like ScanConfirmModal does for
-  // the rolled-up view. drillOpen toggles the section.
-  const [drillOpen, setDrillOpen] = useState(false);
-  const [drillSubdirs, setDrillSubdirs] = useState<
-    { name: string; path: string; estimate: number; size: number }[] | null
-  >(null);
-  const [drillLoading, setDrillLoading] = useState(false);
-  // Names (relative to path) the user explicitly drilled into and
-  // disabled. Same semantics as excludedSubdirs but covers subdirs
-  // that aren't in preview.topFolders.
-  const [drillExcluded, setDrillExcluded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!path) return;
     setPreview(null);
     setErr(null);
     setOverrides(new Set());
-    setExcludedSubdirs(new Set());
-    setDrillExcluded(new Set());
-    setDrillSubdirs(null);
-    setDrillOpen(false);
+    setExcludedTreePaths(new Set());
     if (perm.state !== "granted") return;
     api.sourcePreview(path).then(setPreview).catch((e) => setErr((e as Error).message));
   }, [path, perm.state]);
-
-  // Lazy-load full subdir list the first time the user opens the
-  // drill panel — avoids a second round-trip if they never go there.
-  useEffect(() => {
-    if (!drillOpen || drillSubdirs !== null || !path) return;
-    setDrillLoading(true);
-    api
-      .listSubdirs(path)
-      .then((r) => setDrillSubdirs(r.subdirs))
-      .catch((e) => setErr((e as Error).message))
-      .finally(() => setDrillLoading(false));
-  }, [drillOpen, drillSubdirs, path]);
 
   const excludedExtSet = useMemo(
     () => new Set(preview?.excludedExts ?? []),
     [preview?.excludedExts],
   );
 
-  // Three independent subtractions from the raw preview total.
+  // Two independent subtractions from the raw preview total.
   // - excludedFromDefault: ext patterns user kept on default-exclude list
-  // - excludedFromSubdirs: top-6 subdirs unchecked
-  // - excludedFromDrill: any drilled subdir unchecked that's NOT
-  //   already in top-6 (avoids double-counting)
-  const {
-    excludedFromDefault,
-    excludedFromSubdirs,
-    excludedFromDrill,
-    effectiveIndexable,
-  } = useMemo(() => {
+  // - excludedFromTree: any folder the user unchecked in the tree
+  //   picker. We can only know the exact file-count for the top-level
+  //   subdirs (from preview.topFolders); for deeper unchecks we don't
+  //   re-walk just to update the headline number — those land in the
+  //   real scan and show up there.
+  const { excludedFromDefault, excludedFromTree, effectiveIndexable } = useMemo(() => {
     if (!preview)
-      return {
-        excludedFromDefault: 0,
-        excludedFromSubdirs: 0,
-        excludedFromDrill: 0,
-        effectiveIndexable: 0,
-      };
+      return { excludedFromDefault: 0, excludedFromTree: 0, effectiveIndexable: 0 };
     const total = preview.text + preview.catalog;
     let extDropped = 0;
     for (const e of preview.excludedByExt) {
       if (!overrides.has(e.ext)) extDropped += e.indexable;
     }
-    let subDropped = 0;
+    // Only top-level subdirs have a precise indexable count in the
+    // preview. Match by absolute path prefix from the exclude set.
+    const norm = path.endsWith("/") ? path.slice(0, -1) : path;
+    let treeDropped = 0;
     for (const f of preview.topFolders) {
-      if (excludedSubdirs.has(f.name)) subDropped += f.indexable;
-    }
-    let drillDropped = 0;
-    if (drillSubdirs) {
-      const topNames = new Set(preview.topFolders.map((f) => f.name));
-      for (const d of drillSubdirs) {
-        if (drillExcluded.has(d.name) && !topNames.has(d.name)) {
-          drillDropped += d.estimate;
-        }
-      }
+      if (f.name === "(root)") continue;
+      const abs = `${norm}/${f.name}`;
+      if (excludedTreePaths.has(abs)) treeDropped += f.indexable;
     }
     return {
       excludedFromDefault: extDropped,
-      excludedFromSubdirs: subDropped,
-      excludedFromDrill: drillDropped,
-      effectiveIndexable: Math.max(0, total - extDropped - subDropped - drillDropped),
+      excludedFromTree: treeDropped,
+      effectiveIndexable: Math.max(0, total - extDropped - treeDropped),
     };
-  }, [preview, overrides, excludedSubdirs, drillSubdirs, drillExcluded]);
+  }, [preview, overrides, excludedTreePaths, path]);
 
   const ratio = preview && preview.totalScanned > 0
     ? Math.round((effectiveIndexable / preview.totalScanned) * 100)
@@ -138,31 +100,12 @@ export default function ScanConfigure() {
       return next;
     });
   }
-  function toggleSubdir(name: string) {
-    setExcludedSubdirs((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  }
-  function toggleDrill(name: string) {
-    setDrillExcluded((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  }
-
-  // Build absolute-path exclude prefixes from both subdir sources.
-  // Walker substring match means /Users/.../{name}/ kills the subtree.
+  // The tree picker hands us a Set<absolutePath>. The walker wants
+  // path prefixes ending in "/" so its substring match cleanly kills
+  // a subtree without false-positiving on sibling names that share
+  // the prefix.
   function excludePaths(): string[] {
-    const norm = path.endsWith("/") ? path.slice(0, -1) : path;
-    const names = new Set<string>();
-    for (const n of excludedSubdirs) if (n !== "(root)") names.add(n);
-    for (const n of drillExcluded) names.add(n);
-    return [...names].map((n) => `${norm}/${n}/`);
+    return [...excludedTreePaths].map((p) => (p.endsWith("/") ? p : p + "/"));
   }
 
   async function start() {
@@ -278,10 +221,14 @@ export default function ScanConfigure() {
                   </Link>
                 </Bullet>
               )}
-              {excludedFromSubdirs + excludedFromDrill > 0 && (
+              {excludedFromTree > 0 && (
                 <Bullet>
-                  Skipping <strong>{(excludedFromSubdirs + excludedFromDrill).toLocaleString()}</strong>{" "}
-                  files from unchecked sub-folders.
+                  Skipping <strong>{excludedFromTree.toLocaleString()}</strong>{" "}
+                  files from unchecked sub-folders
+                  {excludedTreePaths.size > preview.topFolders.length && (
+                    <span className="text-stone-500"> (+ deeper picks)</span>
+                  )}
+                  .
                 </Bullet>
               )}
               {preview.cappedAt && (
@@ -293,74 +240,20 @@ export default function ScanConfigure() {
             </ul>
           </section>
 
-          {/* ── Sub-folders ──────────────────────────────────── */}
-          {preview.topFolders.length > 0 && (
-            <section className="mb-10">
-              <div className="flex items-baseline justify-between mb-3">
-                <h2 className="t-section">Which sub-folders to include</h2>
-                <span className="text-[10px] text-stone-400">
-                  uncheck to skip · top {preview.topFolders.length}
-                </span>
-              </div>
-              <FolderBreakdown
-                folders={preview.topFolders}
-                excluded={excludedSubdirs}
-                onToggle={toggleSubdir}
-              />
-
-              {/* Drill — full immediate-child list (cached on demand) */}
-              <button
-                type="button"
-                onClick={() => setDrillOpen((v) => !v)}
-                className="mt-3 text-xs text-stone-500 hover:text-stone-900 underline-offset-2 hover:underline"
-              >
-                {drillOpen ? "Hide" : "Show"} all subfolders →
-              </button>
-              {drillOpen && (
-                <div className="mt-3 border-t border-stone-100 pt-3">
-                  {drillLoading && (
-                    <div className="text-xs text-stone-500 flex items-center gap-2 py-2">
-                      <div className="w-3 h-3 border-2 border-stone-300 border-t-stone-700 rounded-full animate-spin" />
-                      Reading subfolders…
-                    </div>
-                  )}
-                  {drillSubdirs && drillSubdirs.length === 0 && !drillLoading && (
-                    <div className="text-xs text-stone-500 italic">No subfolders.</div>
-                  )}
-                  {drillSubdirs && drillSubdirs.length > 0 && (
-                    <ul className="space-y-1">
-                      {drillSubdirs.map((d) => {
-                        const inTop = preview.topFolders.some((f) => f.name === d.name);
-                        const off = inTop
-                          ? excludedSubdirs.has(d.name)
-                          : drillExcluded.has(d.name);
-                        const onToggle = inTop ? () => toggleSubdir(d.name) : () => toggleDrill(d.name);
-                        return (
-                          <li key={d.path}>
-                            <label className="flex items-center gap-2 text-xs py-1 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!off}
-                                onChange={onToggle}
-                                className="accent-stone-900"
-                              />
-                              <span className={"flex-1 truncate " + (off ? "line-through text-stone-400" : "text-stone-700")}>
-                                {d.name}
-                              </span>
-                              <span className={"shrink-0 tabular-nums text-[11px] " + (off ? "text-stone-300" : "text-stone-500")}>
-                                {d.estimate >= 5000 ? "5000+" : d.estimate.toLocaleString()} files
-                                {d.size > 0 && <span className={off ? "text-stone-300" : "text-stone-400"}> · {bytes(d.size)}</span>}
-                              </span>
-                            </label>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
+          {/* ── Folder tree (any depth) ─────────────────────── */}
+          <section className="mb-10">
+            <div className="flex items-baseline justify-between mb-3">
+              <h2 className="t-section">Pick what to include</h2>
+              <span className="text-[10px] text-stone-400">
+                expand to drill in · uncheck any folder to skip
+              </span>
+            </div>
+            <FolderTreePicker
+              root={path}
+              excludedPaths={excludedTreePaths}
+              onChange={setExcludedTreePaths}
+            />
+          </section>
 
           {/* ── File types ──────────────────────────────────── */}
           {preview.topExtensions.length > 0 && (
@@ -509,66 +402,3 @@ function Bullet({ children, warn }: { children: React.ReactNode; warn?: boolean 
   );
 }
 
-function FolderBreakdown({
-  folders,
-  excluded,
-  onToggle,
-}: {
-  folders: { name: string; indexable: number; skipped: number; bytes: number }[];
-  excluded: Set<string>;
-  onToggle: (name: string) => void;
-}) {
-  const max = Math.max(...folders.map((f) => f.indexable), 1);
-  return (
-    <ul className="space-y-1.5">
-      {folders.map((f) => {
-        const isExcluded = excluded.has(f.name);
-        const togglable = f.name !== "(root)";
-        const ratio = Math.round((f.indexable / max) * 100);
-        return (
-          <li key={f.name} className="text-xs">
-            <label className={"flex items-baseline gap-2 " + (togglable ? "cursor-pointer" : "cursor-default")}>
-              {togglable ? (
-                <input
-                  type="checkbox"
-                  checked={!isExcluded}
-                  onChange={() => onToggle(f.name)}
-                  className="shrink-0 accent-stone-900"
-                />
-              ) : (
-                <span className="shrink-0 w-3 h-3" />
-              )}
-              <span
-                className={
-                  "font-medium truncate flex-1 " +
-                  (isExcluded ? "text-stone-400 line-through" : "text-stone-800")
-                }
-                title={f.name}
-              >
-                {f.name === "(root)" ? <em className="text-stone-500">files at root</em> : f.name}
-              </span>
-              <span
-                className={
-                  "tabular-nums shrink-0 " +
-                  (isExcluded ? "text-stone-300 line-through" : "text-stone-500")
-                }
-              >
-                {f.indexable.toLocaleString()} files
-                <span className={isExcluded ? "text-stone-300" : "text-stone-400"}> · {bytes(f.bytes)}</span>
-              </span>
-            </label>
-            <div className="mt-1 ml-5 h-1 rounded bg-stone-100 overflow-hidden">
-              <div
-                className={
-                  "h-full transition-all " +
-                  (isExcluded ? "bg-stone-300" : "bg-emerald-500/70")
-                }
-                style={{ width: `${ratio}%` }}
-              />
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
