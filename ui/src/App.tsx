@@ -9,6 +9,7 @@ import Agents from "./pages/Agents.tsx";
 import Settings from "./pages/Settings.tsx";
 import { SettingsGearIcon } from "./components/icons.tsx";
 import { GlobalJobIndicator } from "./components/GlobalJobIndicator.tsx";
+import { UpdateBanner } from "./components/UpdateBanner.tsx";
 
 // Three top-level destinations matching the three core verbs:
 //   See (Library), Add, Connect (Agents).
@@ -105,6 +106,10 @@ export default function App() {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
+      {/* Persistent, app-wide update banner. Hides itself when there's
+          nothing to announce. Lives outside <main> so it's fixed to
+          the bottom of the viewport regardless of page scroll. */}
+      <UpdateBanner />
     </div>
   );
 }
