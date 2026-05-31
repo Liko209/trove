@@ -297,6 +297,8 @@ ipcMain.handle("system:hardware", async () => {
 ipcMain.handle("setup:listTiers", async () => {
   const { TIERS, recommendTier, refreshModelStatuses, getModelStatuses } =
     await import("./setup.ts");
+  const { modelsDir } = await import("./paths.ts");
+  const { statSync, existsSync } = await import("node:fs");
   const os = await import("node:os");
   const totalRamGB = Math.round(os.totalmem() / 1024 ** 3);
   const recommended = recommendTier(totalRamGB);
@@ -312,19 +314,33 @@ ipcMain.handle("setup:listTiers", async () => {
   // Pick up any half-finished .part files on disk so setup.html can
   // render "Resume from 47%" before the user kicks off the next try.
   refreshModelStatuses();
+  // Check every tier's embed file on disk — not just the active one —
+  // so a user who had Quality installed and then got their tier
+  // silently reset to Light can see "Quality · Installed ✓" and
+  // pick it without re-downloading 2 GB.
+  const mdir = modelsDir();
   return {
-    tiers: TIERS.map((t) => ({
-      id: t.id,
-      label: t.label,
-      blurb: t.blurb,
-      recommendedRamGB: t.recommendedRamGB,
-      estDocsPerSec: t.estDocsPerSec,
-      embed: {
-        displayName: t.embed.displayName,
-        approxBytes: t.embed.approxBytes,
-        dim: t.embed.dim,
-      },
-    })),
+    tiers: TIERS.map((t) => {
+      const full = join(mdir, t.embed.filename);
+      let installed = false;
+      try {
+        installed = existsSync(full) && statSync(full).size >= t.embed.approxBytes * 0.95;
+      } catch {}
+      return {
+        id: t.id,
+        label: t.label,
+        blurb: t.blurb,
+        recommendedRamGB: t.recommendedRamGB,
+        estDocsPerSec: t.estDocsPerSec,
+        installed,
+        embed: {
+          displayName: t.embed.displayName,
+          approxBytes: t.embed.approxBytes,
+          dim: t.embed.dim,
+          filename: t.embed.filename,
+        },
+      };
+    }),
     recommended,
     active,
     statuses: getModelStatuses(),

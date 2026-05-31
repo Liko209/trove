@@ -51,7 +51,8 @@ const bitrove = {
       blurb: string;
       recommendedRamGB: number;
       estDocsPerSec: number;
-      embed: { displayName: string; approxBytes: number; dim: number };
+      installed: boolean;
+      embed: { displayName: string; approxBytes: number; dim: number; filename: string };
     }[];
     recommended: "light" | "standard" | "quality" | "max";
     active: string;

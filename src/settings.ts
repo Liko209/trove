@@ -162,12 +162,31 @@ export async function readIngestSettings(): Promise<IngestSettings> {
 export async function writeIngestSettings(
   next: IngestSettings,
 ): Promise<IngestSettings> {
+  // Defensive recovery for activeModelTier. A caller that builds `next`
+  // from a partial UI form (the Settings → Filters / Watcher panels
+  // don't touch model tier) used to wipe Quality/Standard/Max users
+  // back to Light here, because `next.activeModelTier === undefined`
+  // fell through to the literal default. Now we first try the cache,
+  // then the on-disk file, and only fall back to "light" when there
+  // is genuinely nothing to preserve (first-ever launch).
+  let activeModelTier = next.activeModelTier;
+  if (activeModelTier === undefined) {
+    if (cached?.activeModelTier) {
+      activeModelTier = cached.activeModelTier;
+    } else {
+      try {
+        const raw = await readFile(settingsFilePath(), "utf8");
+        const j = JSON.parse(raw) as Partial<IngestSettings>;
+        if (j.activeModelTier) activeModelTier = j.activeModelTier;
+      } catch {}
+    }
+  }
   const sanitized: IngestSettings = {
     excludedExts: normaliseExts(next.excludedExts),
     excludedFolders: [...new Set(next.excludedFolders.map((s) => s.trim()).filter(Boolean))],
     watcherScanIntervalMin: clampMin(next.watcherScanIntervalMin, DEFAULT_WATCHER_INTERVAL_MIN),
     watcherDebounceMin: clampMin(next.watcherDebounceMin, DEFAULT_WATCHER_DEBOUNCE_MIN),
-    activeModelTier: next.activeModelTier ?? "light",
+    activeModelTier: activeModelTier ?? "light",
   };
   const p = settingsFilePath();
   await mkdir(dirname(p), { recursive: true });

@@ -82,6 +82,7 @@
       }
       .pill.recommended { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
       .pill.active { background: #fef3c7; color: #92400e; }
+      .pill.installed { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
       .tier-head .cost { margin-left: auto; font-size: 12px; color: #78716c; font-variant-numeric: tabular-nums; }
       .blurb { font-size: 12.5px; color: #78716c; line-height: 1.5; }
       .progress-card {
@@ -233,13 +234,20 @@
           const head = document.createElement("div");
           head.className = "tier-head";
           const pills = [];
+          if (tier.installed) pills.push('<span class="pill installed">Installed</span>');
           if (tier.id === recommended) pills.push('<span class="pill recommended">Recommended</span>');
           if (tier.id === active) pills.push('<span class="pill active">Current</span>');
+          // Replace the size estimate with "no download needed" when
+          // the user already has this tier's model on disk — saves
+          // them re-downloading 2 GB after a settings reset bug.
+          const costLine = tier.installed
+            ? '<span class="cost" style="color:#047857;">Ready · ~' + tier.estDocsPerSec + ' docs/s</span>'
+            : '<span class="cost">' + fmtBytes(tier.embed.approxBytes) +
+              ' · ~' + tier.estDocsPerSec + ' docs/s</span>';
           head.innerHTML =
             '<span class="name">' + tier.label + '</span>' +
             pills.join("") +
-            '<span class="cost">' + fmtBytes(tier.embed.approxBytes) +
-            ' · ~' + tier.estDocsPerSec + ' docs/s</span>';
+            costLine;
           card.appendChild(head);
 
           const blurb = document.createElement("div");
@@ -263,15 +271,18 @@
 
         // Button text + hint adapt to current state so the user knows
         // what they're committing to: fresh download, resume from a
-        // partial, or retry after an error.
+        // partial, retry after an error, or a zero-cost "Use installed".
         const partial = hasPartial();
         const errored = hasError();
+        const installed = !!tier.installed;
         if (downloading) {
-          actionBtn.textContent = "Downloading…";
+          actionBtn.textContent = "Starting…";
         } else if (errored) {
           actionBtn.textContent = "Retry download";
         } else if (partial) {
           actionBtn.textContent = "Resume download";
+        } else if (installed) {
+          actionBtn.textContent = "Use " + tier.label;
         } else {
           actionBtn.textContent = "Download & start";
         }
@@ -282,6 +293,8 @@
           const remaining = Math.max(0, approxTotal - partialBytes());
           hintEl.textContent = "Resuming " + tier.label +
             " · " + fmtBytes(remaining) + " left of " + fmtBytes(approxTotal);
+        } else if (installed) {
+          hintEl.textContent = tier.label + " is already on disk · no download needed";
         } else {
           hintEl.textContent = "Selected " + tier.label +
             " · " + fmtBytes(approxTotal) + " total (embed + reranker)";
@@ -352,11 +365,22 @@
           // .part — so clicking Resume keeps that progress instead of
           // silently switching tiers.
           selected = recommended;
+          // Default priority: resume a partial / errored download
+          // first, then keep an already-installed tier (so a user
+          // whose settings got reset doesn't have to re-download),
+          // then fall back to the recommended tier.
           if (hasPartial() || hasError()) {
-            const partialName = statuses.embed?.filename;
             const match = tiers.find((x) => x.embed.displayName === statuses.embed?.displayName);
             if (match) selected = match.id;
             else if (active) selected = active;
+          } else {
+            const activeInstalled = tiers.find((x) => x.id === active && x.installed);
+            if (activeInstalled) {
+              selected = active;
+            } else {
+              const anyInstalled = tiers.find((x) => x.installed);
+              if (anyInstalled) selected = anyInstalled.id;
+            }
           }
           hwEl.innerHTML = '<span><strong>' + data.hardware.cpuModel + '</strong> · ' +
             data.hardware.totalRamGB + ' GB · ' + data.hardware.arch + '</span>' +

@@ -257,11 +257,20 @@ app.put("/api/settings/ingest", async (req, res) => {
       watcherScanIntervalMin?: number;
       watcherDebounceMin?: number;
     };
+    // Settings page only edits Filters + Watcher fields, but
+    // writeIngestSettings rewrites the whole file. Without spreading
+    // the current state first, activeModelTier (set elsewhere by the
+    // tier picker) silently resets to "light" every save — and on
+    // the next launch, light's bge-m3 isn't on disk for users who
+    // installed Quality/Standard/Max, so they get bounced back to
+    // onboarding even though their model is sitting in models/.
+    const current = await readIngestSettings();
     const saved = await writeIngestSettings({
-      excludedExts: Array.isArray(next.excludedExts) ? next.excludedExts : [],
-      excludedFolders: Array.isArray(next.excludedFolders) ? next.excludedFolders : [],
-      watcherScanIntervalMin: next.watcherScanIntervalMin,
-      watcherDebounceMin: next.watcherDebounceMin,
+      ...current,
+      excludedExts: Array.isArray(next.excludedExts) ? next.excludedExts : current.excludedExts,
+      excludedFolders: Array.isArray(next.excludedFolders) ? next.excludedFolders : current.excludedFolders,
+      watcherScanIntervalMin: next.watcherScanIntervalMin ?? current.watcherScanIntervalMin,
+      watcherDebounceMin: next.watcherDebounceMin ?? current.watcherDebounceMin,
     });
     res.json(saved);
     // Restart watchers so they pick up new cadence values.
