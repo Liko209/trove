@@ -43,7 +43,7 @@ function SystemBar() {
 
   const mcpReady = !!(health?.embed && health?.rerank);
   const agentConnected =
-    claude?.detected.some((d) => d.exists && d.hasTroveEntry) ?? false;
+    claude?.detected.some((d) => d.exists && d.hasBitroveEntry) ?? false;
 
   return (
     <Link

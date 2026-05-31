@@ -137,19 +137,19 @@ export default function Agents() {
           state={
             !claudeCode?.exists
               ? "not-installed"
-              : claudeCode.hasTroveEntry
+              : claudeCode.hasBitroveEntry
                 ? "connected"
                 : "ready-to-connect"
           }
           actionLabel={
             !claudeCode?.exists
               ? "Open install page →"
-              : claudeCode.hasTroveEntry
+              : claudeCode.hasBitroveEntry
                 ? "Re-install connection"
                 : "Connect"
           }
           actionDisabled={busy === claudeCode?.path}
-          actionVariant={claudeCode?.hasTroveEntry ? "secondary" : "primary"}
+          actionVariant={claudeCode?.hasBitroveEntry ? "secondary" : "primary"}
           onAction={() => {
             if (!claudeCode?.exists) {
               window.open("https://docs.claude.com/en/docs/claude-code/overview", "_blank");
@@ -159,7 +159,7 @@ export default function Agents() {
           }}
           footer={
             claudeCode?.exists ? (
-              claudeCode.hasTroveEntry ? (
+              claudeCode.hasBitroveEntry ? (
                 <span className="text-xs text-stone-500">
                   Connected. You may need to restart Claude Code to pick up the change.
                 </span>
@@ -181,10 +181,10 @@ export default function Agents() {
             icon="CD"
             name="Claude Desktop"
             description="The Claude app for Mac. Same connection, different config file."
-            state={claudeDesktop.hasTroveEntry ? "connected" : "ready-to-connect"}
-            actionLabel={claudeDesktop.hasTroveEntry ? "Re-install" : "Connect"}
+            state={claudeDesktop.hasBitroveEntry ? "connected" : "ready-to-connect"}
+            actionLabel={claudeDesktop.hasBitroveEntry ? "Re-install" : "Connect"}
             actionDisabled={busy === claudeDesktop.path}
-            actionVariant={claudeDesktop.hasTroveEntry ? "secondary" : "primary"}
+            actionVariant={claudeDesktop.hasBitroveEntry ? "secondary" : "primary"}
             onAction={() => install(claudeDesktop.path)}
           />
         </section>

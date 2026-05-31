@@ -68,29 +68,36 @@ function LogLine({ entry }: { entry: LogEntry }) {
   const { name, dir } = splitPath(entry.path);
   const icon = LOG_ICON[entry.status];
   const isError = entry.status === "error";
+  // Error rows render as a two-row block: top is icon + filename +
+  // path, bottom is the full error message in its own padded block.
+  // Non-error rows stay single-line and compact.
+  if (isError) {
+    return (
+      <div className="px-4 py-2 bg-rose-50/70 hover:bg-rose-50 border-l-2 border-rose-300 my-1">
+        <div className="flex items-baseline gap-2 mb-1.5">
+          <span className={`shrink-0 w-3 inline-block text-center ${icon.cls}`}>
+            {icon.ch}
+          </span>
+          <span className="text-rose-900 font-medium truncate" title={entry.path}>
+            {name}
+          </span>
+          <span className="text-stone-500 truncate text-[10px]">{dir}</span>
+        </div>
+        {entry.error && (
+          <div className="ml-5 px-3 py-2 rounded bg-white border border-rose-100 text-rose-800 text-[11px] leading-relaxed font-sans break-words whitespace-pre-wrap">
+            {entry.error}
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
-    <div
-      className={
-        "px-4 py-0.5 flex items-baseline gap-2 " +
-        (isError ? "bg-rose-50/70 hover:bg-rose-50" : "hover:bg-stone-100/60")
-      }
-    >
+    <div className="px-4 py-0.5 flex items-baseline gap-2 hover:bg-stone-100/60">
       <span className={`shrink-0 w-3 inline-block text-center ${icon.cls}`}>{icon.ch}</span>
-      <span
-        className={"truncate " + (isError ? "text-rose-900" : "text-stone-800")}
-        title={entry.path}
-      >
+      <span className="text-stone-800 truncate" title={entry.path}>
         {name}
       </span>
       <span className="text-stone-500 truncate text-[10px]">{dir}</span>
-      {/* Errors get their own dedicated wrap line so the message is
-          actually readable even on a long path — previously the
-          truncate would eat it on the right edge. */}
-      {entry.error && (
-        <div className="basis-full text-rose-700 text-[11px] pl-7 pr-4 leading-snug break-words">
-          {entry.error}
-        </div>
-      )}
     </div>
   );
 }
