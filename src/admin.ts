@@ -56,6 +56,7 @@ import {
   startWatching,
   stopWatching,
   watcherStatus,
+  getWatcherHistory,
 } from "./watcher.ts";
 import { deriveCategory, fileTypeBucket } from "./category.ts";
 import {
@@ -223,15 +224,32 @@ app.get("/api/settings/ingest", async (_req, res) => {
 
 app.put("/api/settings/ingest", async (req, res) => {
   try {
-    const next = req.body as { excludedExts?: string[]; excludedFolders?: string[] };
+    const next = req.body as {
+      excludedExts?: string[];
+      excludedFolders?: string[];
+      watcherScanIntervalMin?: number;
+      watcherDebounceMin?: number;
+    };
     const saved = await writeIngestSettings({
       excludedExts: Array.isArray(next.excludedExts) ? next.excludedExts : [],
       excludedFolders: Array.isArray(next.excludedFolders) ? next.excludedFolders : [],
+      watcherScanIntervalMin: next.watcherScanIntervalMin,
+      watcherDebounceMin: next.watcherDebounceMin,
     });
     res.json(saved);
+    // Restart watchers so they pick up new cadence values.
+    initWatchers().catch((e) => console.error("[watcher] reinit failed:", e));
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
+});
+
+// ── /api/watcher/history ───────────────────────────────────
+// Recent (last 200) events from every watched root: scan start /
+// complete, debounce drains, ingest errors. Used by the Settings
+// page to show "what has Bitrove been doing for me?".
+app.get("/api/watcher/history", (_req, res) => {
+  res.json({ events: getWatcherHistory() });
 });
 
 // ── /api/agents/claude-config ─────────────────────────────

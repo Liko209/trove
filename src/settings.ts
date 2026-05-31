@@ -18,6 +18,10 @@ import { dirname, resolve, join } from "node:path";
 export type IngestSettings = {
   excludedExts: string[];
   excludedFolders: string[];
+  // Watcher cadence — minutes. Both clamp at [1, 1440] when persisted.
+  // Defaults to 30/30, which matches the original env-var defaults.
+  watcherScanIntervalMin?: number;
+  watcherDebounceMin?: number;
 };
 
 // Curated defaults — biased toward "skip what is rarely knowledge".
@@ -108,6 +112,14 @@ function settingsFilePath(): string {
 
 let cached: IngestSettings | null = null;
 
+const DEFAULT_WATCHER_INTERVAL_MIN = 30;
+const DEFAULT_WATCHER_DEBOUNCE_MIN = 30;
+
+function clampMin(v: unknown, fallback: number): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  return Math.min(Math.max(Math.round(n), 1), 1440);
+}
+
 export async function readIngestSettings(): Promise<IngestSettings> {
   if (cached) return cached;
   const p = settingsFilePath();
@@ -115,6 +127,8 @@ export async function readIngestSettings(): Promise<IngestSettings> {
     cached = {
       excludedExts: [...DEFAULT_EXCLUDED_EXTS],
       excludedFolders: [...DEFAULT_EXCLUDED_FOLDERS],
+      watcherScanIntervalMin: DEFAULT_WATCHER_INTERVAL_MIN,
+      watcherDebounceMin: DEFAULT_WATCHER_DEBOUNCE_MIN,
     };
     return cached;
   }
@@ -124,12 +138,16 @@ export async function readIngestSettings(): Promise<IngestSettings> {
     cached = {
       excludedExts: normaliseExts(parsed.excludedExts ?? DEFAULT_EXCLUDED_EXTS),
       excludedFolders: parsed.excludedFolders ?? DEFAULT_EXCLUDED_FOLDERS,
+      watcherScanIntervalMin: clampMin(parsed.watcherScanIntervalMin, DEFAULT_WATCHER_INTERVAL_MIN),
+      watcherDebounceMin: clampMin(parsed.watcherDebounceMin, DEFAULT_WATCHER_DEBOUNCE_MIN),
     };
     return cached;
   } catch {
     cached = {
       excludedExts: [...DEFAULT_EXCLUDED_EXTS],
       excludedFolders: [...DEFAULT_EXCLUDED_FOLDERS],
+      watcherScanIntervalMin: DEFAULT_WATCHER_INTERVAL_MIN,
+      watcherDebounceMin: DEFAULT_WATCHER_DEBOUNCE_MIN,
     };
     return cached;
   }
@@ -141,6 +159,8 @@ export async function writeIngestSettings(
   const sanitized: IngestSettings = {
     excludedExts: normaliseExts(next.excludedExts),
     excludedFolders: [...new Set(next.excludedFolders.map((s) => s.trim()).filter(Boolean))],
+    watcherScanIntervalMin: clampMin(next.watcherScanIntervalMin, DEFAULT_WATCHER_INTERVAL_MIN),
+    watcherDebounceMin: clampMin(next.watcherDebounceMin, DEFAULT_WATCHER_DEBOUNCE_MIN),
   };
   const p = settingsFilePath();
   await mkdir(dirname(p), { recursive: true });

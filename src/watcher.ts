@@ -42,12 +42,43 @@ import {
 import { walkSmart } from "./walker.ts";
 import { readIngestSettings, foldersToWalkerExcludes } from "./settings.ts";
 
-// 30 minutes for both the debounce and the periodic pass. Both are in
-// the same order of magnitude so the user-perceptible latency on file
-// changes is at most ~30 min regardless of whether chokidar saw the
-// event. Calibrate via env if needed.
-const DEBOUNCE_MS = Number(process.env.BITROVE_WATCH_DEBOUNCE_MS ?? 30 * 60 * 1000);
-const PERIOD_MS = Number(process.env.BITROVE_WATCH_PERIOD_MS ?? 30 * 60 * 1000);
+// Watcher cadence is read from Settings at startup; env vars still
+// override for ad-hoc tuning. Restart of the admin process picks up
+// any Settings changes — wired into Settings page save which can
+// also poke initWatchers() if needed in the future.
+async function getCadenceMs(): Promise<{ debounceMs: number; periodMs: number }> {
+  const envDeb = process.env.BITROVE_WATCH_DEBOUNCE_MS;
+  const envPer = process.env.BITROVE_WATCH_PERIOD_MS;
+  if (envDeb && envPer) {
+    return { debounceMs: Number(envDeb), periodMs: Number(envPer) };
+  }
+  const s = await readIngestSettings();
+  return {
+    debounceMs: (s.watcherDebounceMin ?? 30) * 60 * 1000,
+    periodMs: (s.watcherScanIntervalMin ?? 30) * 60 * 1000,
+  };
+}
+
+// ── activity history ────────────────────────────────────────
+// In-memory rolling log of recent watcher events (scan completes,
+// ingest counts, errors). The UI polls this to show "what has the
+// watcher been doing?" without needing an SSE channel. Capped so an
+// app running for weeks doesn't grow unbounded.
+const HISTORY_LIMIT = 200;
+type HistoryEntry =
+  | { ts: number; kind: "scan-start"; root: string }
+  | { ts: number; kind: "scan-done"; root: string; seen: number; missingSources: number; missingAliases: number; ms: number }
+  | { ts: number; kind: "drain"; root: string; files: number }
+  | { ts: number; kind: "error"; root: string; path?: string; message: string };
+const history: HistoryEntry[] = [];
+function recordHistory(entry: HistoryEntry): void {
+  history.push(entry);
+  if (history.length > HISTORY_LIMIT) history.shift();
+}
+export function getWatcherHistory(): HistoryEntry[] {
+  // Newest first — most UIs render top-down latest.
+  return [...history].reverse();
+}
 
 type WatchEntry = {
   root: string;
@@ -156,10 +187,13 @@ export async function startWatching(root: WatchedRoot): Promise<void> {
     perRootExcludes,
   };
 
+  const { debounceMs, periodMs } = await getCadenceMs();
   const scheduleDrain = () => {
     if (entry.debounceTimer) clearTimeout(entry.debounceTimer);
-    entry.debounceTimer = setTimeout(() => drainDirty(entry).catch((e) => console.error("[watcher] drain failed:", e)),
-      DEBOUNCE_MS);
+    entry.debounceTimer = setTimeout(
+      () => drainDirty(entry).catch((e) => console.error("[watcher] drain failed:", e)),
+      debounceMs,
+    );
   };
 
   watcher
@@ -183,7 +217,7 @@ export async function startWatching(root: WatchedRoot): Promise<void> {
   // Periodic full pass timer.
   entry.periodicTimer = setInterval(
     () => runFullPass(entry).catch((e) => console.error("[watcher] periodic pass failed:", e)),
-    PERIOD_MS,
+    periodMs,
   );
 
   active.set(root.path, entry);
@@ -225,6 +259,7 @@ async function drainDirty(entry: WatchEntry): Promise<void> {
   entry.debounceTimer = null;
 
   const db = openDb();
+  let errored = 0;
   try {
     for (const p of paths) {
       entry.currentFile = p;
@@ -233,11 +268,15 @@ async function drainDirty(entry: WatchEntry): Promise<void> {
       const r = await ingestFile(db, p, { watchedRoot: entry.root, includeDuplicates: false });
       if (r.status === "error") {
         console.warn(`[watcher] ingest error ${p}:`, r.error);
+        recordHistory({ ts: Date.now(), kind: "error", root: entry.root, path: p, message: r.error });
+        errored++;
       }
     }
   } finally {
     entry.currentFile = null;
     db.close();
+    void errored; // surfaced via recordHistory entries
+    recordHistory({ ts: Date.now(), kind: "drain", root: entry.root, files: paths.length });
   }
 }
 
@@ -247,6 +286,7 @@ async function runFullPass(entry: WatchEntry): Promise<void> {
   const startedAt = Date.now();
   const db = openDb();
   const seen = new Set<string>();
+  recordHistory({ ts: startedAt, kind: "scan-start", root: entry.root });
   try {
     markScanRun(db, entry.root, false);
 
@@ -264,6 +304,7 @@ async function runFullPass(entry: WatchEntry): Promise<void> {
       const r = await ingestFile(db, p, { watchedRoot: entry.root, includeDuplicates: false });
       if (r.status === "error") {
         console.warn(`[watcher] periodic ingest error ${p}:`, r.error);
+        recordHistory({ ts: Date.now(), kind: "error", root: entry.root, path: p, message: r.error });
       }
     }
     entry.currentFile = null;
@@ -272,9 +313,19 @@ async function runFullPass(entry: WatchEntry): Promise<void> {
     const missingSources = markSourcesMissing(db, entry.root, seen, now);
     const missingAliases = markAliasesMissing(db, entry.root, seen, now);
     markScanRun(db, entry.root, true);
+    const ms = Date.now() - startedAt;
     console.log(
-      `[watcher] full pass ${entry.root}: ${seen.size} seen, ${missingSources} sources + ${missingAliases} aliases marked missing in ${Date.now() - startedAt}ms`,
+      `[watcher] full pass ${entry.root}: ${seen.size} seen, ${missingSources} sources + ${missingAliases} aliases marked missing in ${ms}ms`,
     );
+    recordHistory({
+      ts: now,
+      kind: "scan-done",
+      root: entry.root,
+      seen: seen.size,
+      missingSources,
+      missingAliases,
+      ms,
+    });
   } finally {
     db.close();
     entry.scanning = false;

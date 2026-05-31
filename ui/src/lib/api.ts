@@ -247,16 +247,35 @@ export const api = {
     }),
   getIngestSettings: () =>
     j<{
-      current: { excludedExts: string[]; excludedFolders: string[] };
+      current: {
+        excludedExts: string[];
+        excludedFolders: string[];
+        watcherScanIntervalMin?: number;
+        watcherDebounceMin?: number;
+      };
       defaults: { excludedExts: string[]; excludedFolders: string[] };
       supportedTypes: { group: string; description: string; exts: string[] }[];
     }>("/api/settings/ingest"),
-  saveIngestSettings: (s: { excludedExts: string[]; excludedFolders: string[] }) =>
-    j<{ excludedExts: string[]; excludedFolders: string[] }>("/api/settings/ingest", {
+  saveIngestSettings: (s: {
+    excludedExts: string[];
+    excludedFolders: string[];
+    watcherScanIntervalMin?: number;
+    watcherDebounceMin?: number;
+  }) =>
+    j<typeof s>("/api/settings/ingest", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(s),
     }),
+  watcherHistory: () =>
+    j<{
+      events: (
+        | { ts: number; kind: "scan-start"; root: string }
+        | { ts: number; kind: "scan-done"; root: string; seen: number; missingSources: number; missingAliases: number; ms: number }
+        | { ts: number; kind: "drain"; root: string; files: number }
+        | { ts: number; kind: "error"; root: string; path?: string; message: string }
+      )[];
+    }>("/api/watcher/history"),
   listJobs: () => j<{ jobs: Job[] }>("/api/ingest/jobs"),
   getJob: (id: string) => j<Job>(`/api/ingest/jobs/${id}`),
   stopJob: (id: string) =>
