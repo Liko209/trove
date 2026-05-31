@@ -115,7 +115,27 @@ export default function JobProgress({
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api.getJob(jobId).then(setJob).catch(() => {});
+    api
+      .getJob(jobId)
+      .then((j) => {
+        setJob(j);
+        // Backfill the activity log with persisted error events so a
+        // user opening a finished job sees specific failures instead
+        // of "(no per-file events captured in this stream)". Successful
+        // items aren't persisted (too noisy), but errors are exactly
+        // the reason someone opens a failed job after the fact.
+        if (j.errorEvents && j.errorEvents.length > 0) {
+          setLog(
+            j.errorEvents.map((e) => ({
+              ts: e.ts,
+              status: "error" as const,
+              path: e.path,
+              error: e.error,
+            })),
+          );
+        }
+      })
+      .catch(() => {});
     const stop = api.streamJob(jobId, (raw) => {
       const ev = raw as StreamEvent | Job;
       if ("status" in ev && "kind" in ev && "id" in ev) {
@@ -327,6 +347,16 @@ export default function JobProgress({
               )}
             </ul>
           )}
+        </div>
+      )}
+
+      {/* ── Fatal error (job died before/instead of per-file events) ───── */}
+      {job.status === "failed" && job.fatalError && (
+        <div className="px-6 py-4 bg-rose-50 border-b border-rose-200 text-sm">
+          <div className="t-section text-rose-700 mb-1">Job failed</div>
+          <div className="text-rose-900 leading-relaxed whitespace-pre-wrap break-words font-mono text-[12px]">
+            {job.fatalError}
+          </div>
         </div>
       )}
 

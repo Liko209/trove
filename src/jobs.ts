@@ -18,6 +18,12 @@ export type JobEvent =
   | { type: "stopped"; done: number; total: number; ingested: number; errors: number; ms: number }
   | { type: "failed"; error: string };
 
+export type JobErrorRecord = {
+  ts: number;
+  path: string;
+  error: string;
+};
+
 export type JobState = {
   id: string;
   kind: "ingest" | "scan";
@@ -30,7 +36,17 @@ export type JobState = {
   startedAt: number;
   finishedAt?: number;
   description: string;
+  // Bounded per-job error log. Successful items are NOT persisted
+  // (they're too noisy + recoverable via the chunks table), but
+  // errors are the whole reason a user opens a finished job, so we
+  // keep up to ERROR_HISTORY_CAP of them inline.
+  errorEvents?: JobErrorRecord[];
+  // Top-level failure message for jobs that died before processing
+  // any individual file (permission denied at root, etc).
+  fatalError?: string;
 };
+
+const ERROR_HISTORY_CAP = 500;
 
 const STATES = new Map<string, JobState>();
 const EMITTERS = new Map<string, EventEmitter>();
@@ -162,7 +178,25 @@ export function emitJob(id: string, ev: JobEvent): void {
     state.total = ev.total;
     state.current = ev.current;
     if (ev.status === "ingested") state.ingested++;
-    if (ev.status === "error") state.errors++;
+    if (ev.status === "error") {
+      state.errors++;
+      // Capture per-error context so a user opening the finished
+      // job later can see *why* failures happened, not just how
+      // many. Bounded so a million-file disaster doesn't blow up
+      // the persisted JSON.
+      if (!state.errorEvents) state.errorEvents = [];
+      if (state.errorEvents.length < ERROR_HISTORY_CAP) {
+        state.errorEvents.push({
+          ts: Date.now(),
+          path: ev.current,
+          error: ev.error ?? "(no error message)",
+        });
+        // Persist immediately on error events too — these are
+        // user-visible and irreplaceable. Done-event debounce is
+        // still 250 ms but errors override that.
+        scheduleSave();
+      }
+    }
   } else if (ev.type === "done") {
     state.status = "done";
     state.done = ev.done;
@@ -182,6 +216,7 @@ export function emitJob(id: string, ev: JobEvent): void {
   } else if (ev.type === "failed") {
     state.status = "failed";
     state.finishedAt = Date.now();
+    state.fatalError = ev.error;
     STOP_REQUESTS.delete(id);
   }
   EMITTERS.get(id)?.emit("event", ev);

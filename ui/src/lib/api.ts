@@ -81,6 +81,13 @@ export type Job = {
   startedAt: number;
   finishedAt?: number;
   description: string;
+  // Per-error history bounded at 500 entries. Surfaced in JobProgress
+  // so a user opening a finished failed job sees specific reasons,
+  // not just the count.
+  errorEvents?: { ts: number; path: string; error: string }[];
+  // Fatal error message for jobs that died before processing any
+  // per-file events (e.g. permission denied at the root).
+  fatalError?: string;
 };
 
 async function j<T>(input: RequestInfo, init?: RequestInit): Promise<T> {

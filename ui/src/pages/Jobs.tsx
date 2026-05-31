@@ -44,6 +44,14 @@ export default function Jobs() {
 
   return (
     <div className="max-w-5xl mx-auto">
+      <div className="mb-6">
+        <Link
+          to="/dashboard"
+          className="text-xs text-stone-500 hover:text-stone-900 underline-offset-2 hover:underline"
+        >
+          ← Back to Dashboard
+        </Link>
+      </div>
       <div className="flex items-baseline gap-3 mb-6">
         <h1 className="t-display">Jobs</h1>
         <span className="text-stone-500 text-sm">
