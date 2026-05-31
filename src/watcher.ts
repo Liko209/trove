@@ -224,9 +224,46 @@ export async function startWatching(root: WatchedRoot): Promise<void> {
   console.log(`[watcher] watching ${root.path}`);
 
   // Kick off an immediate full pass so a newly-added watched root gets
-  // indexed without waiting 30 min. Don't await — the caller's HTTP
-  // response shouldn't block on a scan.
-  runFullPass(entry).catch((e) => console.error("[watcher] initial pass failed:", e));
+  // indexed without waiting 30 min — but ONLY after the embed server is
+  // ready, otherwise every file blows up with HTTP 503 ("model is
+  // loading"). The wait is bounded (90s) so we don't hang forever if
+  // something's actually broken.
+  (async () => {
+    try {
+      await waitForEmbedReady(90_000);
+    } catch (e) {
+      recordHistory({
+        ts: Date.now(),
+        kind: "error",
+        root: entry.root,
+        message: `embed server never came up: ${(e as Error).message}`,
+      });
+      // Still try the pass — admin /api/health may be misconfigured.
+    }
+    runFullPass(entry).catch((e) => console.error("[watcher] initial pass failed:", e));
+  })();
+}
+
+// Poll the embed server's /health until it returns ok, up to maxMs.
+// Used to gate scan kickoff so we don't generate dozens of 503s while
+// the GGUF model is still being loaded into memory.
+async function waitForEmbedReady(maxMs: number): Promise<void> {
+  const EMBED_URL = process.env.EMBED_URL ?? "http://127.0.0.1:8765";
+  const start = Date.now();
+  let attempt = 0;
+  while (Date.now() - start < maxMs) {
+    try {
+      const r = await fetch(`${EMBED_URL}/health`, {
+        signal: AbortSignal.timeout(1500),
+      });
+      if (r.ok) return;
+    } catch {}
+    attempt++;
+    // Exponential-ish backoff between probes, capped at 3s.
+    const delay = Math.min(500 + attempt * 250, 3000);
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  throw new Error(`embed server not ready after ${maxMs} ms`);
 }
 
 export async function stopWatching(path: string): Promise<void> {

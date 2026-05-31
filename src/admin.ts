@@ -347,6 +347,24 @@ app.get("/api/health", async (_req, res) => {
   res.json({ embed, rerank, embed_url: EMBED_URL, rerank_url: RERANK_URL });
 });
 
+// Reusable: poll embed /health until it returns ok, or maxMs elapses.
+// Used by /api/ingest/scan + the file watcher so they don't kick off
+// work while the GGUF is still being loaded into RAM.
+async function waitForEmbedReady(maxMs: number): Promise<void> {
+  const start = Date.now();
+  let attempt = 0;
+  while (Date.now() - start < maxMs) {
+    try {
+      const r = await fetch(`${EMBED_URL}/health`, { signal: AbortSignal.timeout(1500) });
+      if (r.ok) return;
+    } catch {}
+    attempt++;
+    const delay = Math.min(500 + attempt * 250, 3000);
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  throw new Error(`embed server not ready after ${maxMs} ms`);
+}
+
 // ── /api/stats ────────────────────────────────────────────
 app.get("/api/stats", (_req, res) => {
   const db = openDb();
@@ -663,6 +681,12 @@ app.post("/api/ingest/scan", async (req, res) => {
         `[scan] excluded subtree cleanup: ${cleaned.sources} sources + ${cleaned.aliases} aliases removed under ${root}`,
       );
     }
+    // Wait up to 90s for the embed server to be ready before
+    // hammering it. Fixes the "first run after launch fails for every
+    // file with 503: model is loading" pattern.
+    await waitForEmbedReady(90_000).catch((e) => {
+      console.warn(`[scan] embed not ready, scanning anyway:`, (e as Error).message);
+    });
     let done = 0;
     let stoppedEarly = false;
     let duplicateCount = 0;

@@ -15,18 +15,52 @@ function sanitizeForJson(s: string): string {
   );
 }
 
+// llama-server returns 503 with a "model is loading" body while the
+// GGUF mmap is still warming up — that's not actually a failure, just
+// "ask again in a second". 502 / 504 happen on cold connect. Retry
+// those a handful of times before giving up so a fresh app launch
+// doesn't poison every file in the first scan with transient errors.
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+const MAX_ATTEMPTS = 6;
+
 export async function embed(texts: string[]): Promise<number[][]> {
   const clean = texts.map(sanitizeForJson);
-  const r = await fetch(EMBED_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ input: clean, model: "bge-m3" }),
-  });
-  if (!r.ok) {
-    throw new Error(`embed failed: ${r.status} ${await r.text()}`);
+  let lastErr = "";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let r: Response;
+    try {
+      r = await fetch(EMBED_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ input: clean, model: "bge-m3" }),
+      });
+    } catch (e) {
+      // Network-level failure (connection refused while llama-server
+      // is still starting up). Treat as retryable.
+      lastErr = (e as Error).message;
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((res) => setTimeout(res, backoff(attempt)));
+        continue;
+      }
+      throw new Error(`embed connect failed: ${lastErr}`);
+    }
+    if (r.ok) {
+      const j = (await r.json()) as { data: { embedding: number[] }[] };
+      return j.data.map((d) => d.embedding);
+    }
+    const body = await r.text();
+    lastErr = `${r.status} ${body.slice(0, 200)}`;
+    if (!RETRYABLE_STATUS.has(r.status) || attempt === MAX_ATTEMPTS) {
+      throw new Error(`embed failed: ${lastErr}`);
+    }
+    await new Promise((res) => setTimeout(res, backoff(attempt)));
   }
-  const j = (await r.json()) as { data: { embedding: number[] }[] };
-  return j.data.map((d) => d.embedding);
+  throw new Error(`embed failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
+}
+
+function backoff(attempt: number): number {
+  // 1s, 2s, 4s, 4s, 4s — covers the typical 10-30s GGUF warmup.
+  return Math.min(1000 * 2 ** (attempt - 1), 4000);
 }
 
 export async function embedOne(text: string): Promise<number[]> {
