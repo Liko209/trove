@@ -332,7 +332,27 @@ export async function ingestFile(
     });
     return { status: "ingested", path, kind: "text", chunks: chunks.length, ms: Date.now() - t0 };
   } catch (e) {
-    return { status: "error", path, error: (e as Error).message };
+    const errMsg = (e as Error).message;
+    // Stamp last_error onto the existing sources row so the broken
+    // ingest is *named*, not just an invariant violation
+    // (chunk_count=0 + needs_ocr=0). The UI uses this to show ⚠ on
+    // the file and routes it through the "retry stale" flow rather
+    // than the full-rebuild flow.
+    //
+    // Only update if a row already exists. A first-time-ingest
+    // failure shouldn't materialize a sources row out of thin air
+    // — Library should keep showing "not indexed" for that file
+    // instead of "indexed with an error."
+    try {
+      const existing = getSource(db, path);
+      if (existing) {
+        upsertSource(db, {
+          ...(existing as SourceMetaRow),
+          last_error: errMsg,
+        });
+      }
+    } catch {}
+    return { status: "error", path, error: errMsg };
   }
 }
 

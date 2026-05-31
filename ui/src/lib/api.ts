@@ -43,6 +43,11 @@ export type SourceRow = {
   // scanned PDF). UI surfaces an "Image-only" badge and the
   // Settings → Models OCR toggle batches these for Vision OCR.
   needs_ocr?: 0 | 1;
+  // Plaintext error from the most recent failed ingest, NULL on
+  // success or never tried. UI shows a ⚠ marker with this as the
+  // tooltip body so users can see *why* a row is broken without
+  // digging through logs.
+  last_error?: string | null;
 };
 
 export type SourceList = {
@@ -324,11 +329,21 @@ export const api = {
       chunkBearingSources: number;
       expectedChunkSum: number;
       zeroChunkSources: number;
+      // Up to 50 paths whose chunks went missing, with their last
+      // failure reason if there was one. Used by the Dashboard
+      // retry-stale banner to name what's actually broken.
+      staleSources: { source_path: string; last_error: string | null }[];
       activeJobs: number;
       dimMismatch: { stored: number; current: number } | null;
-      orphanedSources: boolean;
+      // Which UI flow to pitch. Rebuild = wipe + re-ingest everything;
+      // retry-stale = re-ingest just the named files; null = healthy.
+      mode: "rebuild" | "retry-stale" | null;
       needsReingest: boolean;
     }>("/api/index/status"),
+  retryStaleIngest: () =>
+    j<{ ok: true; jobId: string; fileCount: number }>("/api/index/retry-stale", {
+      method: "POST",
+    }),
   // Atomic "tear it down and put it back": clears chunk_vecs + chunks
   // AND fires a force re-scan for every watched root. Returns job
   // ids so the UI can route to /jobs immediately. The split

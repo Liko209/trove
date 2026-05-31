@@ -283,6 +283,14 @@ export default function Sources() {
                               Image-only
                             </span>
                           )}
+                          {r.last_error && (
+                            <span
+                              className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-800 border border-rose-200 cursor-help"
+                              title={`Last ingest failed: ${r.last_error}`}
+                            >
+                              ⚠ Ingest failed
+                            </span>
+                          )}
                         </div>
                         {r.kind === "catalog" && (
                           <span className="text-[10px] uppercase tracking-wider text-violet-700 bg-violet-100 px-1 py-0.5 rounded">

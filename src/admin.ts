@@ -464,43 +464,63 @@ app.get("/api/index/status", (_req, res) => {
   const sourceCount = (db
     .prepare(`SELECT COUNT(*) AS n FROM sources WHERE missing_since IS NULL`)
     .get() as { n: number }).n;
-  // Per-source check. After a wipe, individual sources end up with
-  // chunk_count=0 even if a handful of OTHER sources were re-ingested
-  // since (those have chunk_count > 0, so SUM > 0 — the aggregate
-  // check passes but the library is still broken). chunk_bearing
-  // means text/catalog, not image-only; chunk_count > 0 should be
-  // invariant after a successful ingest. Any (chunk_bearing, count=0)
-  // pair is a wiped-but-not-re-ingested source.
   const zeroChunkSources = (db
     .prepare(
       `SELECT COUNT(*) AS n FROM sources
        WHERE missing_since IS NULL AND needs_ocr = 0 AND chunk_count = 0`,
     )
     .get() as { n: number }).n;
+  // Name the actual offenders for the UI. Cap at 50; that's enough
+  // for the banner's "+N more" affordance and keeps the JSON small.
+  const staleSources = db
+    .prepare(
+      `SELECT source_path, last_error FROM sources
+       WHERE missing_since IS NULL AND needs_ocr = 0 AND chunk_count = 0
+       ORDER BY source_path
+       LIMIT 50`,
+    )
+    .all() as { source_path: string; last_error: string | null }[];
   db.close();
   const activeJobs = listJobs(10).filter((j) => j.status === "running").length;
-  // (a) Aggregate disagrees: chunks table has fewer rows than sources
-  // claim. Catches partial wipes where some sources kept their counts.
-  const partialWipe =
-    expectedChunkSum > 0 && chunkCount < expectedChunkSum;
-  // (b) Per-source: any chunk-bearing source claiming zero chunks is
-  // necessarily a wiped source the watcher's mtime-based skip would
-  // refuse to re-ingest (sources mtime unchanged → skip-cached). This
-  // is the case the user saw: 1 source got re-ingested (mtime
-  // changed externally) so SUM = 1 = chunkCount, but the other 50
-  // are still empty.
-  const someSourcesEmpty = activeJobs === 0 && zeroChunkSources > 0;
-  const orphanedSources = activeJobs === 0 && (partialWipe || someSourcesEmpty);
+  // Decide which fix flow the UI should pitch.
+  //
+  //   - rebuild: the WHOLE index is hosed. Either the dim doesn't
+  //     match (every search will fail), or more than half of the
+  //     expected chunks are missing. User needs to wipe + re-ingest
+  //     everything — the all-or-nothing path.
+  //
+  //   - retry-stale: a small set of specific sources never made it
+  //     through ingest (zero chunks, no needs_ocr flag). Each one
+  //     usually has a last_error explaining why. User shouldn't have
+  //     to wipe 50 working files because 1 PDF tripped pdfjs.
+  //
+  // We pick at most one mode. Rebuild wins when both are true so the
+  // user doesn't fire a retry against a structurally broken store.
+  const heavyWipe =
+    expectedChunkSum > 0 && chunkCount < expectedChunkSum / 2;
+  const noChunksAtAll =
+    chunkBearingSources > 0 && expectedChunkSum === 0;
+  const needsRebuild =
+    mismatch != null || (activeJobs === 0 && (heavyWipe || noChunksAtAll));
+  const needsRetryStale =
+    !needsRebuild && activeJobs === 0 && zeroChunkSources > 0;
+  const mode: "rebuild" | "retry-stale" | null = needsRebuild
+    ? "rebuild"
+    : needsRetryStale
+      ? "retry-stale"
+      : null;
   res.json({
     chunkCount,
     sourceCount,
     chunkBearingSources,
     expectedChunkSum,
     zeroChunkSources,
+    staleSources,
     activeJobs,
     dimMismatch: mismatch,
-    orphanedSources,
-    needsReingest: mismatch != null || orphanedSources,
+    mode,
+    // Kept for callers that haven't migrated to `mode`.
+    needsReingest: needsRebuild || needsRetryStale,
   });
 });
 
@@ -526,11 +546,14 @@ app.post("/api/index/rebuild", (req, res) => {
 });
 
 // The user-facing "Rebuild" endpoint. Atomic: clears chunk_vecs +
-// chunks AND fires a force re-scan for every watched root. Returns
-// the list of new job ids so the UI can navigate straight to /jobs
-// without juggling state. Matches the literal meaning of "rebuild"
-// — tear it down AND put it back. Splitting these into two
-// user-driven steps was the v0.0.72 design mistake.
+// chunks AND fires a force re-scan for every watched root, PLUS a
+// catch-up ingest for any sources that exist outside the watched
+// roots (Picked Files imports, or historical rows whose root was
+// later removed). Without the catch-up step those rows stay at
+// chunk_count=0 forever — the watched-root scans wouldn't visit
+// them — and the per-source health check on /api/index/status keeps
+// firing the banner. Returns the list of new job ids so the UI can
+// navigate straight to /jobs.
 app.post("/api/index/reset-and-reingest", async (_req, res) => {
   // Clear first so the new ingests don't fight with stale chunks.
   const db = openDb();
@@ -539,13 +562,26 @@ app.post("/api/index/reset-and-reingest", async (_req, res) => {
     .get() as { n: number }).n;
   rebuildChunkVecsForCurrentDim(db);
   const roots = listWatchedRoots(db).map((r) => r.path);
+  // Pick up every active chunk-bearing source whose path isn't
+  // covered by any watched root. Using endsWith/startsWith over
+  // the root path so files inside a watched folder still belong
+  // to that root (the scan will hit them). Anything that doesn't
+  // belong gets its own ingest-files job.
+  const allActivePaths = db
+    .prepare(
+      `SELECT source_path FROM sources
+       WHERE missing_since IS NULL AND needs_ocr = 0`,
+    )
+    .all() as { source_path: string }[];
   db.close();
+  const orphanPaths = allActivePaths
+    .map((r) => r.source_path)
+    .filter((p) => !roots.some((root) => p === root || p.startsWith(root + "/")));
 
-  // Enqueue one scan job per watched root (POST /api/ingest/scan in
-  // proc, but we just call createJob + run the same loop the scan
-  // endpoint does — keeps everything in this process without an HTTP
-  // hop). We use the existing scan endpoint internally via fetch to
-  // reuse all its option parsing and stop / progress wiring.
+  // Enqueue one scan job per watched root + (optionally) one
+  // ingest-files job covering the orphans. We use the existing
+  // HTTP endpoints internally so they reuse all permission / stop
+  // / progress wiring.
   const jobIds: string[] = [];
   for (const root of roots) {
     try {
@@ -563,12 +599,67 @@ app.post("/api/index/reset-and-reingest", async (_req, res) => {
         jobIds.push(j.jobId);
       }
     } catch {
-      // best effort — if a root fails to enqueue we surface the
-      // partial result and the UI shows it
+      // best effort — partial result is surfaced below
     }
   }
+  if (orphanPaths.length > 0) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${PORT}/api/ingest/files`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          paths: orphanPaths,
+          force: true,
+        }),
+      });
+      if (r.ok) {
+        const j = (await r.json()) as { jobId: string };
+        jobIds.push(j.jobId);
+      }
+    } catch {}
+  }
 
-  res.json({ ok: true, chunksDropped, watchedRoots: roots.length, jobIds });
+  res.json({
+    ok: true,
+    chunksDropped,
+    watchedRoots: roots.length,
+    orphanFiles: orphanPaths.length,
+    jobIds,
+  });
+});
+
+// Targeted re-ingest. For when 1-N specific sources got stuck (PDF
+// parse failure, transient embed error, ...) and we don't want to
+// nuke the whole vector store. Pulls every chunk_bearing source
+// with chunk_count=0 and fires one /api/ingest/files job against
+// them with force=true. last_error gets re-stamped (or cleared on
+// success) by ingest.ts's catch / upsertSource path.
+app.post("/api/index/retry-stale", async (_req, res) => {
+  const db = openDb();
+  const stalePaths = (db
+    .prepare(
+      `SELECT source_path FROM sources
+       WHERE missing_since IS NULL AND needs_ocr = 0 AND chunk_count = 0`,
+    )
+    .all() as { source_path: string }[]).map((r) => r.source_path);
+  db.close();
+  if (stalePaths.length === 0) {
+    return res.status(404).json({ error: "no stale sources to retry" });
+  }
+  try {
+    const r = await fetch(`http://127.0.0.1:${PORT}/api/ingest/files`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paths: stalePaths, force: true }),
+    });
+    if (!r.ok) {
+      return res.status(500).json({ error: await r.text() });
+    }
+    const j = (await r.json()) as { jobId: string };
+    res.json({ ok: true, jobId: j.jobId, fileCount: stalePaths.length });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
 });
 
 app.put("/api/ocr/enabled", async (req, res) => {

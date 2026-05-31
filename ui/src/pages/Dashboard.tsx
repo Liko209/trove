@@ -580,11 +580,90 @@ function IndexHealthBanner() {
     return () => clearInterval(t);
   }, []);
 
-  if (!status || !status.needsReingest) return null;
+  if (!status || !status.mode) return null;
 
+  // ── retry-stale branch ──────────────────────────────────────
+  // A few specific files failed during ingest — wipe + re-ingest
+  // everything is the wrong answer. Show the offending files and
+  // offer a targeted retry that only touches those rows.
+  if (status.mode === "retry-stale") {
+    async function retry() {
+      setBusy(true);
+      setErr(null);
+      try {
+        const r = await api.retryStaleIngest();
+        navigate(`/jobs/${r.jobId}`);
+      } catch (e) {
+        setErr((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    }
+    const n = status.zeroChunkSources;
+    const sample = status.staleSources.slice(0, 3);
+    const remainder = Math.max(0, n - sample.length);
+    return (
+      <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200">
+        <div className="flex items-start gap-3">
+          <div className="shrink-0 mt-0.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-amber-900 mb-1">
+              {n} file{n === 1 ? "" : "s"} failed to index
+            </div>
+            <p className="text-xs text-amber-900/85 leading-relaxed mb-3">
+              {n === 1 ? "This file" : "These files"} ingested before but
+              the most recent attempt didn't produce any chunks. Retrying
+              re-runs ingest only on {n === 1 ? "this row" : "those rows"} —
+              your other {status.chunkCount.toLocaleString()} chunks aren't
+              touched.
+            </p>
+            <ul className="text-[11px] text-amber-900/90 mb-3 space-y-1 font-mono">
+              {sample.map((s) => (
+                <li key={s.source_path} className="truncate" title={s.last_error ?? s.source_path}>
+                  <span>{s.source_path.split("/").pop()}</span>
+                  {s.last_error && (
+                    <span className="ml-2 text-amber-700/80">
+                      — {s.last_error.length > 80 ? s.last_error.slice(0, 80) + "…" : s.last_error}
+                    </span>
+                  )}
+                </li>
+              ))}
+              {remainder > 0 && (
+                <li className="text-amber-700/80">+ {remainder} more</li>
+              )}
+            </ul>
+            {err && (
+              <div className="mb-3 text-xs text-rose-700">{err}</div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={retry}
+                disabled={busy}
+                className="text-xs px-3 py-1.5 rounded-md bg-amber-900 text-white hover:bg-amber-800 disabled:opacity-40"
+              >
+                {busy ? "Starting…" : `Retry ${n} file${n === 1 ? "" : "s"}`}
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/sources")}
+                className="text-xs px-3 py-1.5 rounded-md text-amber-900 hover:bg-amber-100"
+              >
+                View in Sources
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── rebuild branch (dim mismatch or > half of chunks gone) ──
   const dimLine = status.dimMismatch
     ? `Stored ${status.dimMismatch.stored}-dim vectors but the active embed model produces ${status.dimMismatch.current}-dim vectors.`
-    : `${status.sourceCount.toLocaleString()} files registered but only ${status.chunkCount.toLocaleString()} searchable chunks — your vectors got wiped at some point.`;
+    : `Most of your searchable chunks are missing — only ${status.chunkCount.toLocaleString()} of an expected ${status.expectedChunkSum.toLocaleString()} remain.`;
 
   async function rebuild() {
     setBusy(true);
@@ -594,7 +673,6 @@ function IndexHealthBanner() {
       if (r.jobIds.length > 0) {
         navigate(`/jobs/${r.jobIds[0]}`);
       } else {
-        // No watched roots — at least clear the warning by refreshing.
         await tick();
         setConfirming(false);
       }
@@ -606,27 +684,25 @@ function IndexHealthBanner() {
   }
 
   return (
-    <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200">
+    <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200">
       <div className="flex items-start gap-3">
         <div className="shrink-0 mt-0.5">
-          <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+          <span className="inline-block w-2 h-2 rounded-full bg-rose-500" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-amber-900 mb-1">
+          <div className="font-medium text-rose-900 mb-1">
             Search index needs rebuild
           </div>
-          <p className="text-xs text-amber-900/85 leading-relaxed mb-3">
+          <p className="text-xs text-rose-900/85 leading-relaxed mb-3">
             {dimLine} Rebuilding clears the broken vectors and
             immediately re-ingests every watched folder so the index
             is searchable again.
           </p>
           {err && (
-            <div className="mb-3 text-xs text-rose-700">
-              {err}
-            </div>
+            <div className="mb-3 text-xs text-rose-700">{err}</div>
           )}
           {confirming ? (
-            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3">
+            <div className="rounded-lg bg-white border border-rose-300 p-3">
               <p className="text-xs text-rose-900 leading-relaxed mb-3">
                 <strong>Wipe {status.chunkCount.toLocaleString()} stored chunks and re-scan all watched folders?</strong>{" "}
                 Your file list and folders stay. Re-ingesting may take a
@@ -657,7 +733,7 @@ function IndexHealthBanner() {
               <button
                 type="button"
                 onClick={() => setConfirming(true)}
-                className="text-xs px-3 py-1.5 rounded-md bg-amber-900 text-white hover:bg-amber-800"
+                className="text-xs px-3 py-1.5 rounded-md bg-rose-900 text-white hover:bg-rose-800"
               >
                 Rebuild index
               </button>

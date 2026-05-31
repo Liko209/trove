@@ -126,6 +126,19 @@ export function openDb(): Database.Database {
     db.exec(`ALTER TABLE sources ADD COLUMN needs_ocr INTEGER NOT NULL DEFAULT 0`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_needs_ocr ON sources(needs_ocr)`);
   }
+  if (!srcColNames.has("last_error")) {
+    // Plaintext error message from the most recent ingest attempt.
+    // NULL means "succeeded last time" (or "never tried"). Set by
+    // ingest.ts's top-level catch so a failed ingest doesn't leave
+    // a sources row in the broken "kind=text + chunk_count=0 +
+    // needs_ocr=0" state — instead we keep the row but stamp the
+    // failure reason so:
+    //   - the Sources / Library UI can show a ⚠ marker + tooltip
+    //   - /api/index/status's stale-detection knows this is a known
+    //     failure (retry-stale flow) rather than a global wipe
+    //     (full rebuild flow)
+    db.exec(`ALTER TABLE sources ADD COLUMN last_error TEXT`);
+  }
   // Add the excludes column on existing tables (idempotent).
   const wrCols = db.prepare(`PRAGMA table_info(watched_roots)`).all() as { name: string }[];
   if (!wrCols.some((c) => c.name === "excludes")) {
@@ -314,6 +327,7 @@ export type SourceMetaRow = SourceRow & {
   missing_since?: number | null;
   watched_root?: string | null;
   needs_ocr?: 0 | 1;
+  last_error?: string | null;
 };
 
 export function upsertSource(
@@ -324,8 +338,8 @@ export function upsertSource(
     `INSERT INTO sources (
         source_path, kind, source_mtime, indexed_at, chunk_count,
         mtime_ms, size_bytes, content_hash, missing_since, watched_root,
-        needs_ocr
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        needs_ocr, last_error
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source_path) DO UPDATE SET
        kind=excluded.kind,
        source_mtime=excluded.source_mtime,
@@ -336,7 +350,8 @@ export function upsertSource(
        content_hash=excluded.content_hash,
        missing_since=excluded.missing_since,
        watched_root=COALESCE(excluded.watched_root, sources.watched_root),
-       needs_ocr=excluded.needs_ocr`,
+       needs_ocr=excluded.needs_ocr,
+       last_error=excluded.last_error`,
   ).run(
     args.source_path,
     args.kind,
@@ -349,6 +364,7 @@ export function upsertSource(
     args.missing_since ?? null,
     args.watched_root ?? null,
     args.needs_ocr ?? 0,
+    args.last_error ?? null,
   );
 }
 
@@ -803,6 +819,7 @@ export type ListSourcesResult = {
     source_mtime: string;
     indexed_at: string;
     needs_ocr: 0 | 1;
+    last_error: string | null;
   }[];
 };
 
@@ -835,7 +852,7 @@ export function listSources(db: Database.Database, opts: ListSourcesOpts = {}): 
 
   const rows = db
     .prepare(
-      `SELECT source_path, kind, chunk_count, source_mtime, indexed_at, needs_ocr FROM sources ${whereSql}
+      `SELECT source_path, kind, chunk_count, source_mtime, indexed_at, needs_ocr, last_error FROM sources ${whereSql}
        ORDER BY source_path LIMIT ? OFFSET ?`,
     )
     .all(...params, limit, offset) as ListSourcesResult["rows"];
@@ -847,7 +864,7 @@ export function listSources(db: Database.Database, opts: ListSourcesOpts = {}): 
 export function allSources(db: Database.Database): ListSourcesResult["rows"] {
   return db
     .prepare(
-      `SELECT source_path, kind, chunk_count, source_mtime, indexed_at, needs_ocr FROM sources ORDER BY source_path`,
+      `SELECT source_path, kind, chunk_count, source_mtime, indexed_at, needs_ocr, last_error FROM sources ORDER BY source_path`,
     )
     .all() as ListSourcesResult["rows"];
 }
