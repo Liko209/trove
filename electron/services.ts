@@ -7,7 +7,7 @@
 
 import { spawn, ChildProcess } from "node:child_process";
 import { join, dirname } from "node:path";
-import { existsSync, mkdirSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync, readFileSync } from "node:fs";
 import { app } from "electron";
 import {
   adminEntry,
@@ -66,7 +66,9 @@ function readActiveTier(): Tier {
     const userData = app.getPath("userData");
     const p = join(userData, "ingest-settings.json");
     if (existsSync(p)) {
-      const j = JSON.parse(require("node:fs").readFileSync(p, "utf8"));
+      // readFileSync was already imported at top via "node:fs" — use it
+      // directly instead of a runtime require() that breaks in ESM.
+      const j = JSON.parse(readFileSync(p, "utf8"));
       if (j.activeModelTier) return j.activeModelTier as Tier;
     }
   } catch {}

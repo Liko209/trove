@@ -177,7 +177,27 @@ app.get("/api/source-preview", async (req, res) => {
     return res.status(500).json({ error: (e as Error).message });
   }
 
-  const estimatedSeconds = Math.max(5, Math.round(text * 1.0 + catalog * 0.05));
+  // Per-tier throughput estimate. The constants below mirror
+  // electron/setup.ts TIERS[].estDocsPerSec for the embed side;
+  // catalog-only entries cost roughly 1/20th of a real embed because
+  // they're a single short string. Was previously hard-coded to bge-m3
+  // numbers, which made Quality/Max scans estimate 2-6x too fast.
+  const tier = (process.env.BITROVE_MODEL_TIER ?? "light") as
+    | "light"
+    | "standard"
+    | "quality"
+    | "max";
+  const SEC_PER_DOC: Record<typeof tier, number> = {
+    light: 0.1,     // ~10 docs/s
+    standard: 0.125, // ~8 docs/s
+    quality: 0.33,  // ~3 docs/s
+    max: 0.67,      // ~1.5 docs/s
+  };
+  const perDoc = SEC_PER_DOC[tier] ?? SEC_PER_DOC.light;
+  const estimatedSeconds = Math.max(
+    5,
+    Math.round(text * perDoc + catalog * (perDoc / 20)),
+  );
   const topExtensions = Object.entries(byExt)
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 12)

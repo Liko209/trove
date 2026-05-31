@@ -6,10 +6,11 @@
 // runs setup checks BEFORE starting services and routes the BrowserWindow
 // to an onboarding URL when something is missing.
 
-import { existsSync, statSync, createWriteStream } from "node:fs";
+import { existsSync, statSync, readFileSync, createWriteStream } from "node:fs";
 import { mkdir, rename, unlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
+import { app } from "electron";
 import { modelsDir } from "./paths.ts";
 
 export type ModelSpec = {
@@ -165,6 +166,29 @@ export type ModelStatus = {
   error?: string;
 };
 
+// activeSpecs() reads the current tier choice from ingest-settings.json
+// and returns the matching [embed, reranker] pair. This is the
+// load-bearing fix for "first launch after picking Quality keeps
+// bouncing me back to onboarding" — `MODELS` is always Light, so any
+// check that iterates MODELS will report the active tier's embed file
+// as missing even right after the user just downloaded it.
+function readActiveTierFromDisk(): Tier {
+  try {
+    const userData = app.getPath("userData");
+    const p = join(userData, "ingest-settings.json");
+    if (existsSync(p)) {
+      const raw = JSON.parse(readFileSync(p, "utf8"));
+      if (raw.activeModelTier && tierById(raw.activeModelTier as Tier)) {
+        return raw.activeModelTier as Tier;
+      }
+    }
+  } catch {}
+  return "light";
+}
+function activeSpecs(): [ModelSpec, ModelSpec] {
+  return [tierById(readActiveTierFromDisk()).embed, RERANKER_SPEC];
+}
+
 const STATE: Record<ModelSpec["id"], ModelStatus> = {
   embed: { id: "embed", filename: MODELS[0].filename, displayName: MODELS[0].displayName, status: "missing" },
   rerank: { id: "rerank", filename: MODELS[1].filename, displayName: MODELS[1].displayName, status: "missing" },
@@ -194,8 +218,16 @@ export function getModelStatuses(): Record<string, ModelStatus> {
 
 export function refreshModelStatuses(): void {
   const dir = modelsDir();
-  for (const m of MODELS) {
+  // Iterate the ACTIVE tier's specs, not the legacy MODELS constant,
+  // so a user who chose e.g. Quality sees Qwen3-Embedding-4B's
+  // readiness instead of bge-m3's.
+  const specs = activeSpecs();
+  for (const m of specs) {
     const full = join(dir, m.filename);
+    // Refresh the display name + filename in STATE too so the
+    // onboarding UI / progress widgets don't show "bge-m3" when the
+    // active tier is Standard / Quality / Max.
+    STATE[m.id] = { ...STATE[m.id], filename: m.filename, displayName: m.displayName };
     if (existsSync(full)) {
       try {
         const sz = statSync(full).size;
@@ -216,7 +248,7 @@ export function refreshModelStatuses(): void {
 
 export function allModelsReady(): boolean {
   refreshModelStatuses();
-  return MODELS.every((m) => STATE[m.id].status === "ready");
+  return activeSpecs().every((m) => STATE[m.id].status === "ready");
 }
 
 export function pauseDownload(id: ModelSpec["id"]): void {
