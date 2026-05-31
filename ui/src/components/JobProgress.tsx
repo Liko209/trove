@@ -340,9 +340,9 @@ export default function JobProgress({
       {!isTerminal && job.current && (() => {
         const { name, dir } = splitPath(job.current);
         return (
-          <div className="px-6 py-2.5 bg-stone-50 border-b border-stone-100 flex items-center gap-2.5">
-            <div className="shrink-0 w-3 h-3 border-2 border-stone-300 border-t-stone-700 rounded-full animate-spin" />
-            <span className="text-[10px] uppercase tracking-wider text-stone-500 shrink-0">
+          <div className="px-6 py-3 bg-emerald-50/60 border-b border-emerald-100 flex items-center gap-3">
+            <div className="shrink-0 w-4 h-4 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-700 shrink-0">
               Now
             </span>
             <span className="text-sm font-medium text-stone-900 truncate" title={job.current}>
