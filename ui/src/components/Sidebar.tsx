@@ -73,21 +73,35 @@ export function Sidebar() {
 
   return (
     <aside
-      className="h-full w-[220px] shrink-0 bg-stone-50 border-r border-stone-200 flex flex-col app-drag"
+      className="h-full w-[188px] shrink-0 bg-stone-50 border-r border-stone-200 flex flex-col app-drag"
       // Sidebar surface is drag-enabled by default so the user can grab
       // anywhere empty to move the window — but every interactive child
       // overrides with app-no-drag so clicks aren't swallowed.
     >
-      {/* Spacer so the traffic lights at (20, 18) don't overlap the
-          wordmark below. Matches the top-bar height in App.tsx. */}
+      {/* Spacer matching the top-bar height in App.tsx so the traffic
+          lights at (16, 13) sit clear of the wordmark below. */}
       <div className="h-10 shrink-0" />
 
-      <div className="px-3 pb-3 app-no-drag">
+      <div className="px-3 pt-2 pb-4 app-no-drag">
         <Link
           to="/"
-          className="block px-1 text-[15px] font-semibold text-stone-900 tracking-tight hover:text-stone-700"
+          className="block px-1 hover:opacity-70 transition-opacity"
+          aria-label="Bitrove"
         >
-          Bitrove
+          <span
+            className="text-[24px] font-medium tracking-tight text-stone-900"
+            style={{
+              // Same editorial serif stack the page titles use, but at
+              // ~2/3 the size so the rail wordmark reads as a logo
+              // rather than competing with the page hero.
+              fontFamily:
+                '"New York", "Newsreader", "Lyon Text", "Instrument Serif", Georgia, "Times New Roman", serif',
+              letterSpacing: "-0.02em",
+              lineHeight: 1,
+            }}
+          >
+            Bitrove
+          </span>
         </Link>
       </div>
 
