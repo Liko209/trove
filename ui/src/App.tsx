@@ -1,4 +1,4 @@
-import { Link, Route, Routes, useLocation, Navigate } from "react-router-dom";
+import { Route, Routes, Navigate } from "react-router-dom";
 import Library from "./pages/Library.tsx";
 import Sources from "./pages/Sources.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
@@ -7,109 +7,63 @@ import JobDetail from "./pages/JobDetail.tsx";
 import Jobs from "./pages/Jobs.tsx";
 import Agents from "./pages/Agents.tsx";
 import Settings from "./pages/Settings.tsx";
-import { SettingsGearIcon } from "./components/icons.tsx";
 import { GlobalJobIndicator } from "./components/GlobalJobIndicator.tsx";
-import { UpdateBanner } from "./components/UpdateBanner.tsx";
+import { Sidebar } from "./components/Sidebar.tsx";
+import { UpdateIndicator } from "./components/UpdateIndicator.tsx";
 
-// Three top-level destinations matching the three core verbs:
-//   See (Library), Add, Connect (Agents).
-// Settings sits behind the ⚙ icon on the right (macOS convention).
-// /jobs, /sources, /dashboard are still routable by URL or contextual
-// links but don't take up nav real estate.
-const NAV = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/library", label: "Library" },
-  { to: "/agents", label: "Agents" },
-];
-
-function NavLink({ to, label, badge }: { to: string; label: string; badge?: number }) {
-  const { pathname } = useLocation();
-  const isActive = pathname === to || pathname.startsWith(to + "/");
-  return (
-    <Link
-      to={to}
-      className={
-        "px-3 py-1.5 rounded text-sm font-medium transition flex items-center gap-1.5 app-no-drag " +
-        (isActive ? "bg-stone-900 text-white" : "text-stone-700 hover:bg-stone-200")
-      }
-    >
-      {label}
-      {badge !== undefined && badge > 0 && (
-        <span
-          className={
-            "inline-flex items-center justify-center text-[10px] font-bold rounded-full px-1.5 min-w-[1.25rem] " +
-            (isActive ? "bg-emerald-400 text-stone-900" : "bg-emerald-500 text-white")
-          }
-        >
-          {badge}
-        </span>
-      )}
-    </Link>
-  );
-}
+// Native-feeling macOS layout:
+//
+//   ┌─ Top bar (h-10, drag) ──────────[GlobalJob][Update][v] ┐
+//   ├── Sidebar 220px ──┬── Main (flex-1, scrollable) ───────┤
+//   │                   │                                    │
+//   │  Bitrove          │   <Page>                           │
+//   │  Dashboard        │                                    │
+//   │  Library          │                                    │
+//   │  Agents           │                                    │
+//   │  ──────           │                                    │
+//   │  Settings         │                                    │
+//   └───────────────────┴────────────────────────────────────┘
+//
+// Top bar is intentionally thin — it exists to host the traffic-light
+// drag region and the right-side indicators, not to compete with the
+// sidebar as a navigation surface. Settings sits at the foot of the
+// sidebar following macOS HIG conventions for less-frequent
+// destinations (Mail/Notes/Reminders do the same).
 
 export default function App() {
   return (
-    <div className="min-h-full flex flex-col">
-      <div className="sticky top-0 z-10">
-        <header className="border-b border-stone-200 bg-white app-drag">
-          {/* main.ts pins the macOS traffic lights at {x:20, y:18}, which
-              centers their 12px bullets on y=24. Header is h-12 (48px),
-              so its flex-items-center row also centers on y=24. Wordmark
-              + nav now sit on the same horizontal axis as the lights. */}
-          <div className="max-w-7xl mx-auto pl-[88px] pr-6 h-12 flex items-center gap-6">
-            <Link
-              to="/"
-              className="text-[15px] font-semibold text-stone-900 tracking-tight hover:text-stone-700 transition-colors app-no-drag"
-            >
-              Bitrove
-            </Link>
-            <nav className="flex gap-1 app-no-drag">
-              {NAV.map((n) => (
-                <NavLink key={n.to} {...n} />
-              ))}
-            </nav>
-            <div className="ml-auto flex items-center gap-4 app-no-drag">
-              <GlobalJobIndicator />
-              <Link
-                to="/settings"
-                className="text-stone-500 hover:text-stone-900 transition"
-                title="Settings"
-                aria-label="Settings"
-              >
-                <SettingsGearIcon size={18} />
-              </Link>
-              <div className="text-[11px] text-stone-400 tabular-nums font-mono">v{__APP_VERSION__}</div>
-            </div>
+    <div className="h-screen flex flex-col bg-stone-50 overflow-hidden">
+      <header className="h-10 shrink-0 border-b border-stone-200 bg-white/60 backdrop-blur app-drag flex items-center pl-[88px] pr-3 gap-3">
+        <div className="ml-auto flex items-center gap-2 app-no-drag">
+          <GlobalJobIndicator />
+          <UpdateIndicator />
+          <span className="text-[10px] text-stone-400 tabular-nums font-mono">
+            v{__APP_VERSION__}
+          </span>
+        </div>
+      </header>
+
+      <div className="flex-1 flex min-h-0">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto">
+          <div className="px-8 py-8">
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/library" element={<Library />} />
+              <Route path="/agents" element={<Agents />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/add/scan" element={<ScanConfigure />} />
+              <Route path="/sources" element={<Sources />} />
+              <Route path="/jobs" element={<Jobs />} />
+              <Route path="/jobs/:id" element={<JobDetail />} />
+              <Route path="/add" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/connect" element={<Navigate to="/agents" replace />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
           </div>
-        </header>
+        </main>
       </div>
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
-        <Routes>
-          {/* Dashboard is the default landing — it answers the most
-              common reason a user opens the app: "is anything running
-              right now, and should I add more?" */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/library" element={<Library />} />
-          <Route path="/agents" element={<Agents />} />
-          <Route path="/settings" element={<Settings />} />
-          {/* Scan configure is reached from Dashboard quick-add */}
-          <Route path="/add/scan" element={<ScanConfigure />} />
-          {/* Power-user / contextual pages */}
-          <Route path="/sources" element={<Sources />} />
-          <Route path="/jobs" element={<Jobs />} />
-          <Route path="/jobs/:id" element={<JobDetail />} />
-          {/* Legacy paths */}
-          <Route path="/add" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/connect" element={<Navigate to="/agents" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </main>
-      {/* Persistent, app-wide update banner. Hides itself when there's
-          nothing to announce. Lives outside <main> so it's fixed to
-          the bottom of the viewport regardless of page scroll. */}
-      <UpdateBanner />
     </div>
   );
 }
