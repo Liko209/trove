@@ -1,6 +1,15 @@
 // 进程内 job 注册表 — 用于追踪批量 ingest 任务的进度，供 SSE 订阅
+//
+// Persistence: job *state* (counts, status, timestamps) is mirrored to
+// disk as JSON so that admin restarts don't erase the user's recent
+// activity history — they wouldn't otherwise have any way back to a
+// scan that failed before they could read the error. Live SSE
+// subscriptions (EMITTERS) remain in-memory only; a restarted admin
+// just shows the persisted terminal state.
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 export type JobEvent =
   | { type: "started"; total: number }
@@ -27,6 +36,75 @@ const STATES = new Map<string, JobState>();
 const EMITTERS = new Map<string, EventEmitter>();
 const STOP_REQUESTS = new Set<string>();
 
+// Max jobs persisted; older ones get pruned. Keeps the file bounded
+// regardless of how long Bitrove has been running.
+const PERSIST_LIMIT = 100;
+let initialized = false;
+
+function jobsFilePath(): string {
+  const root = process.env.BITROVE_USER_DATA;
+  if (root) return join(root, "jobs.json");
+  return resolve(process.cwd(), "data", "jobs.json");
+}
+
+// Load any persisted jobs on first access. Anything we find in
+// "running" or "queued" state from a previous run is necessarily
+// dead — admin crashed or was killed mid-run — so we mark it
+// failed with a clear message. The user can re-run the scan; the
+// new (mtime,size,hash) skip logic means already-indexed files
+// won't be re-embedded.
+function initOnce(): void {
+  if (initialized) return;
+  initialized = true;
+  const p = jobsFilePath();
+  if (!existsSync(p)) return;
+  try {
+    const raw = readFileSync(p, "utf8");
+    const arr = JSON.parse(raw) as JobState[];
+    if (!Array.isArray(arr)) return;
+    for (const j of arr) {
+      if (j.status === "running" || j.status === "queued") {
+        j.status = "failed";
+        j.finishedAt = j.finishedAt ?? Date.now();
+        // Re-tag the current file so the UI knows what to say.
+        if (!j.current) j.current = "(admin restarted before this run completed)";
+      }
+      STATES.set(j.id, j);
+    }
+  } catch (e) {
+    console.warn("[jobs] failed to load persisted jobs:", (e as Error).message);
+  }
+}
+
+// Snapshot the current registry to disk. Debounced so a burst of
+// per-item updates doesn't hammer the FS.
+let saveTimer: NodeJS.Timeout | null = null;
+function scheduleSave(): void {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistNow();
+  }, 250);
+}
+function persistNow(): void {
+  const all = [...STATES.values()]
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, PERSIST_LIMIT);
+  // Prune in-memory map at the same time so we don't grow without bound
+  // either.
+  if (all.length < STATES.size) {
+    STATES.clear();
+    for (const j of all) STATES.set(j.id, j);
+  }
+  const p = jobsFilePath();
+  try {
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify(all, null, 2));
+  } catch (e) {
+    console.warn("[jobs] failed to persist:", (e as Error).message);
+  }
+}
+
 // Co-operative stop: handlers call shouldStop() between items.
 // requestStop returns false if job id is unknown or already finished.
 export function requestStop(id: string): boolean {
@@ -42,6 +120,7 @@ export function shouldStop(id: string): boolean {
 }
 
 export function createJob(kind: JobState["kind"], description: string): JobState {
+  initOnce();
   const id = randomUUID();
   const state: JobState = {
     id,
@@ -57,14 +136,17 @@ export function createJob(kind: JobState["kind"], description: string): JobState
   };
   STATES.set(id, state);
   EMITTERS.set(id, new EventEmitter());
+  scheduleSave();
   return state;
 }
 
 export function getJob(id: string): JobState | undefined {
+  initOnce();
   return STATES.get(id);
 }
 
 export function listJobs(limit = 20): JobState[] {
+  initOnce();
   return [...STATES.values()].sort((a, b) => b.startedAt - a.startedAt).slice(0, limit);
 }
 
@@ -103,6 +185,16 @@ export function emitJob(id: string, ev: JobEvent): void {
     STOP_REQUESTS.delete(id);
   }
   EMITTERS.get(id)?.emit("event", ev);
+  // Only persist on terminal transitions + when a job starts. Per-item
+  // ticks are too noisy and ephemeral to justify the IO cost.
+  if (
+    ev.type === "started" ||
+    ev.type === "done" ||
+    ev.type === "stopped" ||
+    ev.type === "failed"
+  ) {
+    scheduleSave();
+  }
 }
 
 export function subscribe(id: string, fn: (ev: JobEvent) => void): () => void {
