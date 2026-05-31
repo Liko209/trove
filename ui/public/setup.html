@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bitrove — Setup</title>
     <style>
-      :root {
-        color-scheme: light;
-      }
+      :root { color-scheme: light; }
       * { box-sizing: border-box; }
       html, body {
         margin: 0;
@@ -21,143 +19,156 @@
       body { display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
       .card {
         width: 100%;
-        max-width: 640px;
+        max-width: 680px;
         background: #fff;
         border: 1px solid #e7e5e4;
         border-radius: 16px;
-        padding: 40px;
+        padding: 36px 40px;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
       }
-      h1 { font-size: 24px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.01em; }
-      h2 { font-size: 14px; font-weight: 600; margin: 0 0 14px; letter-spacing: -0.005em; color: #292524; }
-      .sub { color: #78716c; font-size: 13.5px; margin: 0 0 28px; line-height: 1.55; }
-      .model-row {
-        padding: 18px 20px;
+      h1 {
+        font-family: "New York", Georgia, "Times New Roman", serif;
+        font-size: 30px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+        margin: 0 0 8px;
+      }
+      h2 { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #78716c; margin: 24px 0 12px; }
+      .sub { color: #57534e; font-size: 14px; margin: 0 0 24px; line-height: 1.55; }
+      .hw {
+        background: #fafaf9;
         border: 1px solid #e7e5e4;
         border-radius: 10px;
-        margin-bottom: 12px;
+        padding: 12px 14px;
+        font-size: 12.5px;
+        color: #57534e;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
       }
-      .model-row + .model-row { margin-top: 0; }
-      .row-head {
+      .hw strong { color: #1c1917; }
+      .tier-card {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 14px 16px;
+        border: 1px solid #e7e5e4;
+        border-radius: 10px;
+        margin-bottom: 8px;
+        background: #fff;
+        cursor: pointer;
+        transition: border-color 0.1s, background 0.1s;
+      }
+      .tier-card:hover { border-color: #a8a29e; }
+      .tier-card.selected {
+        border-color: #1c1917;
+        background: #fafaf9;
+      }
+      .tier-head {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
       }
-      .row-head .name {
-        font-weight: 500;
-        font-size: 14px;
+      .tier-head .name { font-weight: 500; font-size: 14px; }
+      .tier-head .pill {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 1px 7px;
+        border-radius: 9999px;
       }
-      .row-head .size {
-        margin-left: auto;
+      .pill.recommended { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+      .pill.active { background: #fef3c7; color: #92400e; }
+      .tier-head .cost { margin-left: auto; font-size: 12px; color: #78716c; font-variant-numeric: tabular-nums; }
+      .blurb { font-size: 12.5px; color: #78716c; line-height: 1.5; }
+      .progress-card {
+        margin-top: 18px;
+        background: #fafaf9;
+        border: 1px solid #e7e5e4;
+        border-radius: 10px;
+        padding: 14px 16px;
+      }
+      .progress-row { margin-top: 8px; }
+      .progress-row:first-child { margin-top: 0; }
+      .progress-row .label {
+        display: flex;
+        justify-content: space-between;
         font-size: 12px;
-        color: #a8a29e;
+        color: #57534e;
+        margin-bottom: 4px;
         font-variant-numeric: tabular-nums;
       }
-      .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 2px 8px;
-        border-radius: 9999px;
-        background: #f5f5f4;
-        color: #57534e;
-        font-size: 11px;
-        font-weight: 500;
-      }
-      .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #a8a29e;
-      }
-      .dot.ready { background: #10b981; }
-      .dot.running { background: #10b981; }
-      .dot.error { background: #f43f5e; }
       .progress-bar {
         height: 6px;
-        background: #f5f5f4;
+        background: #e7e5e4;
         border-radius: 9999px;
         overflow: hidden;
-        margin-top: 6px;
       }
       .progress-bar .fill {
         height: 100%;
         background: #1c1917;
+        border-radius: 9999px;
         transition: width 0.2s;
       }
-      .meta {
-        margin-top: 6px;
-        font-size: 11.5px;
-        color: #78716c;
-        display: flex;
-        gap: 10px;
-        font-variant-numeric: tabular-nums;
+      .err {
+        margin-top: 10px;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: #be123c;
+        background: #fff1f2;
+        border: 1px solid #fecdd3;
+        border-radius: 8px;
       }
-      .actions {
+      .footer {
+        margin-top: 24px;
         display: flex;
-        gap: 8px;
-        margin-top: 12px;
+        align-items: center;
+        gap: 12px;
       }
+      .hint { font-size: 12.5px; color: #78716c; }
       button {
         font: inherit;
         cursor: pointer;
         border: 1px solid #d6d3d1;
         background: #fff;
-        padding: 7px 14px;
+        padding: 8px 16px;
         border-radius: 8px;
         font-size: 13px;
         color: #292524;
-        transition: background 0.1s;
+        margin-left: auto;
       }
-      button:hover:not(:disabled) { background: #f5f5f4; }
       button.primary {
         background: #1c1917;
         color: #fff;
         border-color: #1c1917;
       }
       button.primary:hover:not(:disabled) { background: #292524; }
-      button:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-      }
-      .err {
-        margin-top: 8px;
-        padding: 6px 10px;
-        font-size: 12px;
-        color: #be123c;
-        background: #fff1f2;
-        border-radius: 6px;
-      }
-      .footer {
-        margin-top: 32px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      .footer .ready-summary {
-        margin-left: auto;
-        font-size: 12.5px;
-        color: #78716c;
-      }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
     </style>
   </head>
   <body>
     <main class="card">
       <h1>Set up Bitrove</h1>
       <p class="sub">
-        Bitrove uses small open-source AI models to make your documents searchable —
-        all on this Mac. Download once, then everything stays local.
+        Bitrove indexes your files with an on-device AI model — nothing leaves
+        this Mac. Pick a model tier matched to your hardware. You can switch
+        later in Settings → Models.
       </p>
 
-      <h2>Models</h2>
-      <div id="models"></div>
+      <div class="hw" id="hw">Detecting your Mac…</div>
 
-      <div id="err-global" class="err" hidden></div>
+      <h2>Choose a tier</h2>
+      <div id="tiers"></div>
+
+      <div id="progress" hidden></div>
+      <div id="err" class="err" hidden></div>
 
       <div class="footer">
-        <span id="hint" class="ready-summary">Click "Download" on each model above.</span>
-        <button id="continue" class="primary" disabled>Continue →</button>
+        <span class="hint" id="hint">Pick a tier to continue.</span>
+        <button id="action" class="primary" disabled>Download &amp; start</button>
       </div>
     </main>
 
@@ -168,139 +179,145 @@
           '<div class="card"><h1>Setup unavailable</h1><p class="sub">The setup bridge did not load. Please relaunch Bitrove.</p></div>';
       }
 
-      const modelsEl = document.getElementById("models");
-      const continueBtn = document.getElementById("continue");
+      const hwEl = document.getElementById("hw");
+      const tiersEl = document.getElementById("tiers");
+      const progressEl = document.getElementById("progress");
+      const errEl = document.getElementById("err");
       const hintEl = document.getElementById("hint");
-      const errGlobal = document.getElementById("err-global");
+      const actionBtn = document.getElementById("action");
 
-      let catalog = [];
-      let statuses = {};
+      /** @type {any[]} */ let tiers = [];
+      /** @type {string} */ let recommended = "light";
+      /** @type {string} */ let active = "light";
+      /** @type {string | null} */ let selected = null;
+      /** @type {Record<string,any>} */ let statuses = {};
+      let downloading = false;
 
       function fmtBytes(n) {
         if (!n && n !== 0) return "—";
-        if (n < 1024) return n + " B";
-        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
-        if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
-        return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
-      }
-      function fmtDuration(s) {
-        if (!isFinite(s) || s < 0) return "—";
-        if (s < 60) return Math.round(s) + "s";
-        if (s < 3600) return Math.floor(s / 60) + "m " + Math.round(s % 60) + "s";
-        return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
-      }
-      function fmtSpeed(bps) {
-        if (!bps) return "—";
-        if (bps < 1024 * 1024) return (bps / 1024).toFixed(0) + " KB/s";
-        return (bps / (1024 * 1024)).toFixed(1) + " MB/s";
-      }
-      function pillLabel(s) {
-        switch (s) {
-          case "ready": return "Ready";
-          case "downloading": return "Downloading";
-          case "verifying": return "Verifying";
-          case "error": return "Error";
-          default: return "Not downloaded";
-        }
+        if (n < 1024 * 1024) return (n / 1024).toFixed(0) + " KB";
+        if (n < 1024 * 1024 * 1024) return Math.round(n / 1024 / 1024) + " MB";
+        return (n / (1024 * 1024 * 1024)).toFixed(1) + " GB";
       }
 
-      function render() {
-        modelsEl.innerHTML = "";
-        let readyCount = 0;
-        let anyError = null;
-        for (const m of catalog) {
-          const st = statuses[m.id] || { status: "missing" };
-          if (st.status === "ready") readyCount++;
-          if (st.status === "error" && !anyError) anyError = st.error || "Unknown error";
-
-          const row = document.createElement("div");
-          row.className = "model-row";
+      function renderTiers() {
+        tiersEl.innerHTML = "";
+        for (const tier of tiers) {
+          const card = document.createElement("button");
+          card.className = "tier-card" + (selected === tier.id ? " selected" : "");
+          card.onclick = () => { selected = tier.id; renderTiers(); updateAction(); };
 
           const head = document.createElement("div");
-          head.className = "row-head";
+          head.className = "tier-head";
+          const pills = [];
+          if (tier.id === recommended) pills.push('<span class="pill recommended">Recommended</span>');
+          if (tier.id === active) pills.push('<span class="pill active">Current</span>');
           head.innerHTML =
-            '<span class="name">' + m.displayName + '</span>' +
-            '<span class="status-pill"><span class="dot ' + (st.status === "ready" ? "ready" : st.status === "error" ? "error" : "") + '"></span>' + pillLabel(st.status) + '</span>' +
-            '<span class="size">' + fmtBytes(m.approxBytes) + '</span>';
-          row.appendChild(head);
+            '<span class="name">' + tier.label + '</span>' +
+            pills.join("") +
+            '<span class="cost">' + fmtBytes(tier.embed.approxBytes) +
+            ' · ~' + tier.estDocsPerSec + ' docs/s</span>';
+          card.appendChild(head);
 
-          if (st.status === "downloading" || st.status === "verifying") {
-            const pct = st.totalBytes ? Math.min(100, (st.downloadedBytes || 0) / st.totalBytes * 100) : 0;
-            const bar = document.createElement("div");
-            bar.className = "progress-bar";
-            bar.innerHTML = '<div class="fill" style="width:' + pct.toFixed(1) + '%"></div>';
-            row.appendChild(bar);
+          const blurb = document.createElement("div");
+          blurb.className = "blurb";
+          blurb.textContent = tier.blurb;
+          card.appendChild(blurb);
 
-            const meta = document.createElement("div");
-            meta.className = "meta";
-            meta.innerHTML =
-              '<span>' + fmtBytes(st.downloadedBytes || 0) + ' / ' + fmtBytes(st.totalBytes || m.approxBytes) + '</span>' +
-              '<span>' + fmtSpeed(st.speedBps) + '</span>' +
-              '<span>' + fmtDuration(st.etaSeconds) + ' left</span>';
-            row.appendChild(meta);
-          }
-
-          if (st.status === "error" && st.error) {
-            const err = document.createElement("div");
-            err.className = "err";
-            err.textContent = st.error;
-            row.appendChild(err);
-          }
-
-          const actions = document.createElement("div");
-          actions.className = "actions";
-          if (st.status === "missing" || st.status === "error") {
-            const btn = document.createElement("button");
-            btn.textContent = (st.downloadedBytes || 0) > 0 ? "Resume download" : "Download";
-            btn.onclick = () => t.downloadModel(m.id);
-            actions.appendChild(btn);
-          } else if (st.status === "downloading") {
-            const pause = document.createElement("button");
-            pause.textContent = "Pause";
-            pause.onclick = () => t.pauseModel(m.id);
-            actions.appendChild(pause);
-
-            const cancel = document.createElement("button");
-            cancel.textContent = "Cancel";
-            cancel.onclick = () => t.cancelModel(m.id);
-            actions.appendChild(cancel);
-          }
-          row.appendChild(actions);
-          modelsEl.appendChild(row);
+          tiersEl.appendChild(card);
         }
+      }
 
-        if (anyError) {
-          errGlobal.hidden = false;
-          errGlobal.textContent = anyError;
-        } else {
-          errGlobal.hidden = true;
+      function updateAction() {
+        if (!selected) {
+          actionBtn.disabled = true;
+          hintEl.textContent = "Pick a tier to continue.";
+          return;
         }
+        const tier = tiers.find((x) => x.id === selected);
+        const approxTotal = (tier.embed.approxBytes || 0) + 438_000_000; // reranker fixed
+        actionBtn.disabled = downloading;
+        actionBtn.textContent = downloading ? "Downloading…" : "Download & start";
+        hintEl.textContent = "Selected " + tier.label +
+          " · " + fmtBytes(approxTotal) + " total (embed + reranker)";
+      }
 
-        const allReady = readyCount === catalog.length;
-        continueBtn.disabled = !allReady;
-        if (allReady) {
-          hintEl.textContent = "All models ready. Tap Continue to start Bitrove.";
-        } else {
-          hintEl.textContent = readyCount + " of " + catalog.length + " models ready.";
+      function renderProgress() {
+        const ids = ["embed", "rerank"];
+        const anyActive = ids.some((id) => {
+          const s = statuses[id];
+          return s && (s.status === "downloading" || s.status === "verifying");
+        });
+        if (!anyActive && !downloading) {
+          progressEl.hidden = true;
+          return;
+        }
+        progressEl.hidden = false;
+        progressEl.innerHTML = '<div class="progress-card"></div>';
+        const cont = progressEl.firstElementChild;
+        for (const id of ids) {
+          const s = statuses[id];
+          if (!s) continue;
+          const total = s.totalBytes || s.approxBytes || 0;
+          const done = s.downloadedBytes || 0;
+          const pct = total > 0 ? Math.min(100, (done / total) * 100) : 0;
+          const row = document.createElement("div");
+          row.className = "progress-row";
+          const fmtSpeed = s.speedBps
+            ? (s.speedBps < 1024 * 1024
+                ? (s.speedBps / 1024).toFixed(0) + " KB/s"
+                : (s.speedBps / 1024 / 1024).toFixed(1) + " MB/s")
+            : "";
+          row.innerHTML =
+            '<div class="label"><span>' + (s.displayName || id) + ' · ' +
+            (s.status === "ready" ? "Ready" : s.status === "verifying" ? "Verifying" : "Downloading") +
+            '</span><span>' + fmtBytes(done) + ' / ' + fmtBytes(total) +
+            (fmtSpeed ? ' · ' + fmtSpeed : "") + '</span></div>' +
+            '<div class="progress-bar"><div class="fill" style="width:' + pct.toFixed(1) + '%"></div></div>';
+          cont.appendChild(row);
         }
       }
 
       async function init() {
-        const data = await t.listModels();
-        catalog = data.catalog;
-        statuses = data.statuses;
-        render();
+        try {
+          const data = await t.listTiers();
+          tiers = data.tiers;
+          recommended = data.recommended;
+          active = data.active;
+          selected = recommended;
+          hwEl.innerHTML = '<span><strong>' + data.hardware.cpuModel + '</strong> · ' +
+            data.hardware.totalRamGB + ' GB · ' + data.hardware.arch + '</span>' +
+            '<span>Recommended: <strong>' +
+            (tiers.find((x) => x.id === recommended)?.label || recommended) +
+            '</strong></span>';
+          renderTiers();
+          updateAction();
+        } catch (e) {
+          errEl.hidden = false;
+          errEl.textContent = "Failed to read tiers: " + (e?.message || e);
+        }
+
+        // Stream download status updates from the existing channel.
+        try {
+          t.onModelsUpdate((s) => { statuses = s; renderProgress(); });
+        } catch {}
       }
 
-      t.onModelsUpdate((s) => {
-        statuses = s;
-        render();
-      });
-
-      continueBtn.addEventListener("click", async () => {
-        continueBtn.disabled = true;
-        continueBtn.textContent = "Starting Bitrove…";
-        await t.startServices();
+      actionBtn.addEventListener("click", async () => {
+        if (!selected || downloading) return;
+        downloading = true;
+        errEl.hidden = true;
+        updateAction();
+        try {
+          await t.downloadForTier(selected);
+          actionBtn.textContent = "Starting Bitrove…";
+          await t.startServices();
+        } catch (e) {
+          errEl.hidden = false;
+          errEl.textContent = "Setup failed: " + (e?.message || e);
+          downloading = false;
+          updateAction();
+        }
       });
 
       init();

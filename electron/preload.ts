@@ -43,6 +43,23 @@ const bitrove = {
     tier: "light" | "standard" | "quality" | "max",
   ): Promise<{ tier: string; watchedRootsReingested: boolean }> =>
     ipcRenderer.invoke("setup:switchTier", tier),
+  // Onboarding tier picker
+  listTiers: (): Promise<{
+    tiers: {
+      id: "light" | "standard" | "quality" | "max";
+      label: string;
+      blurb: string;
+      recommendedRamGB: number;
+      estDocsPerSec: number;
+      embed: { displayName: string; approxBytes: number; dim: number };
+    }[];
+    recommended: "light" | "standard" | "quality" | "max";
+    active: string;
+    hardware: { totalRamGB: number; cpuModel: string; arch: string };
+  }> => ipcRenderer.invoke("setup:listTiers"),
+  downloadForTier: (
+    tier: "light" | "standard" | "quality" | "max",
+  ): Promise<{ ok: true }> => ipcRenderer.invoke("setup:downloadForTier", tier),
   getServicesState: (): Promise<Record<string, ServiceState>> =>
     ipcRenderer.invoke("services:state"),
   openExternal: (url: string): Promise<boolean> =>

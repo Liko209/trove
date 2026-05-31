@@ -290,6 +290,78 @@ ipcMain.handle("system:hardware", async () => {
   };
 });
 
+// ── IPC: model tiers for onboarding ───────────────────────
+// Returns the 4 tiers + currently-recommended tier based on the
+// machine's RAM + the active selection (if any). setup.html reads
+// this to render the tier picker on first launch.
+ipcMain.handle("setup:listTiers", async () => {
+  const { TIERS, recommendTier } = await import("./setup.ts");
+  const os = await import("node:os");
+  const totalRamGB = Math.round(os.totalmem() / 1024 ** 3);
+  const recommended = recommendTier(totalRamGB);
+  // Read currently-selected tier from settings (Light by default).
+  let active: string = "light";
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const settingsPath = join(app.getPath("userData"), "ingest-settings.json");
+    const raw = await readFile(settingsPath, "utf8");
+    const j = JSON.parse(raw);
+    if (j.activeModelTier) active = j.activeModelTier;
+  } catch {}
+  return {
+    tiers: TIERS.map((t) => ({
+      id: t.id,
+      label: t.label,
+      blurb: t.blurb,
+      recommendedRamGB: t.recommendedRamGB,
+      estDocsPerSec: t.estDocsPerSec,
+      embed: {
+        displayName: t.embed.displayName,
+        approxBytes: t.embed.approxBytes,
+        dim: t.embed.dim,
+      },
+    })),
+    recommended,
+    active,
+    hardware: {
+      totalRamGB,
+      cpuModel: os.cpus()[0]?.model ?? "unknown",
+      arch: process.arch,
+    },
+  };
+});
+
+// Persists the chosen tier + kicks off the download chain for that
+// tier's embed model + the (fixed) reranker. Progress events stream
+// through the existing setup:update channel so the UI can show
+// the same bars as the single-model flow used to.
+ipcMain.handle(
+  "setup:downloadForTier",
+  async (_e, tier: "light" | "standard" | "quality" | "max") => {
+    const { tierById, RERANKER_SPEC, downloadSpec } = await import("./setup.ts");
+    const target = tierById(tier);
+    const { writeFile, readFile, mkdir } = await import("node:fs/promises");
+    const { existsSync } = await import("node:fs");
+    const { dirname } = await import("node:path");
+    // 1) Persist tier
+    const settingsPath = join(app.getPath("userData"), "ingest-settings.json");
+    let s: Record<string, unknown> = {};
+    if (existsSync(settingsPath)) {
+      try { s = JSON.parse(await readFile(settingsPath, "utf8")); } catch {}
+    }
+    s.activeModelTier = tier;
+    await mkdir(dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, JSON.stringify(s, null, 2));
+    // 2) Download embed + reranker (parallel). Sequential awaits are
+    //    fine — both emit to setup:update so progress shows correctly.
+    await Promise.all([
+      downloadSpec(target.embed),
+      downloadSpec(RERANKER_SPEC),
+    ]);
+    return { ok: true };
+  },
+);
+
 // ── IPC: model setup ──────────────────────────────────────
 ipcMain.handle("setup:listModels", () => ({
   catalog: MODELS,
