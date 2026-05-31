@@ -272,6 +272,12 @@ export async function downloadModel(id: ModelSpec["id"]): Promise<void> {
 }
 
 async function downloadModelInternal(spec: ModelSpec): Promise<void> {
+  // Pull id off the spec — the function was originally only called from
+  // downloadModel(id) where `id` was in closure scope, but downloadSpec
+  // (used by the new tier-aware setup flow) calls us with just a spec.
+  // Without this line the in-function references to `id` throw
+  // ReferenceError on Setup → Download & start.
+  const id = spec.id;
   const dir = modelsDir();
   await mkdir(dir, { recursive: true });
   const finalPath = join(dir, spec.filename);
