@@ -187,6 +187,13 @@ export const api = {
     j<{
       root: string;
       subdirs: { name: string; path: string; estimate: number; size: number }[];
+      // Immediate (non-subdir) files inside this folder. Already
+      // filtered by classify() + the user's excluded extensions. Capped
+      // at 500 — `truncated` flips true if the folder has more, with
+      // totalImmediateFiles holding the raw count.
+      files: { name: string; path: string; size: number; kind: "text" | "catalog" }[];
+      truncated: boolean;
+      totalImmediateFiles: number;
     }>(`/api/list-subdirs?path=${encodeURIComponent(path)}`),
   // Watched-roots CRUD + missing-file reconciliation.
   listWatchedRoots: () =>

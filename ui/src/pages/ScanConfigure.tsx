@@ -360,7 +360,7 @@ export default function ScanConfigure() {
         <FolderOpenIcon size={16} className="text-stone-400" />
         <span className="text-xs text-stone-500">
           {preview && perm.state === "granted"
-            ? `${effectiveIndexable.toLocaleString()} files · runs in the background, pause any time`
+            ? `Ready to index ${effectiveIndexable.toLocaleString()} file${effectiveIndexable === 1 ? "" : "s"}`
             : "—"}
         </span>
         <Link

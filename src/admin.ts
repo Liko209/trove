@@ -929,25 +929,31 @@ if (existsSync(UI_DIST)) {
 }
 
 // ── /api/list-subdirs ─────────────────────────────────────
-// Returns the immediate (top-level) subdirectories of a path, each with
-// a rough file-count estimate. Used by the first-run wizard so the
-// user can drill into ~/Documents/Notes instead of indexing all of
-// Documents. Capped + bounded so accidentally pointing at "/" stays
-// fast.
+// Returns the immediate children of a path:
+//   subdirs[]: top-level subdirectories, each with a rough file-count
+//              estimate (covers everything beneath, capped at 5000).
+//   files[]:   loose files sitting directly in this folder, classified
+//              text/catalog, excluding the user's default-skip ext list.
+//              Per-call cap of 500 — if a folder has more, the UI sees
+//              truncated=true and can show "+N more" rather than render
+//              5000 rows.
+// Used by the first-run wizard + the folder-tree picker in /add/scan.
 app.get("/api/list-subdirs", async (req, res) => {
   const root = (req.query.path as string) || "";
   if (!root) return res.status(400).json({ error: "missing path" });
   if (!existsSync(root)) return res.status(404).json({ error: "path not found" });
   try {
     const entries = await readdir(root, { withFileTypes: true });
+    const settings = await readIngestSettings();
+    const excludedFolders = new Set(settings.excludedFolders);
+    const excludedExts = new Set(settings.excludedExts);
+    const SAMPLE_CAP = 5000;
+    const FILE_CAP = 500;
+
+    // ── subdirs (full subtree estimate) ────────────────────
     const dirs = entries
       .filter((e) => e.isDirectory() && !e.name.startsWith("."))
       .map((e) => e.name);
-
-    const settings = await readIngestSettings();
-    const excludedFolders = new Set(settings.excludedFolders);
-    const SAMPLE_CAP = 5000; // per-subdir entry cap for the estimate
-
     const out: { name: string; path: string; estimate: number; size: number }[] = [];
     for (const name of dirs) {
       if (excludedFolders.has(name)) continue;
@@ -969,7 +975,39 @@ app.get("/api/list-subdirs", async (req, res) => {
       out.push({ name, path, estimate, size });
     }
     out.sort((a, b) => b.estimate - a.estimate);
-    res.json({ root, subdirs: out });
+
+    // ── immediate files (not inside subdirs) ───────────────
+    const fileEntries = entries
+      .filter((e) => e.isFile() && !e.name.startsWith(".") && !/\.icloud$/i.test(e.name));
+    const files: { name: string; path: string; size: number; kind: "text" | "catalog" }[] = [];
+    let truncated = false;
+    for (const e of fileEntries) {
+      if (files.length >= FILE_CAP) {
+        truncated = true;
+        break;
+      }
+      const ext = extname(e.name).toLowerCase();
+      if (ext && excludedExts.has(ext)) continue;
+      const fp = join(root, e.name);
+      const kind = classify(fp);
+      if (kind === "skip") continue;
+      let size = 0;
+      try {
+        size = statSync(fp).size;
+      } catch {}
+      files.push({ name: e.name, path: fp, size, kind });
+    }
+    // Stable sort: by name so the picker doesn't shuffle on refresh.
+    files.sort((a, b) => a.name.localeCompare(b.name));
+    const totalFiles = fileEntries.length;
+
+    res.json({
+      root,
+      subdirs: out,
+      files,
+      truncated,
+      totalImmediateFiles: totalFiles,
+    });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }

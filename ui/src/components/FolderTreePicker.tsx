@@ -32,6 +32,20 @@ type Node = {
   size: number;
 };
 
+type FileNode = {
+  path: string;
+  name: string;
+  size: number;
+  kind: "text" | "catalog";
+};
+
+type ChildrenPayload = {
+  subdirs: Node[];
+  files: FileNode[];
+  truncated: boolean;
+  totalImmediateFiles: number;
+};
+
 type LoadState = "idle" | "loading" | "loaded" | "error";
 
 export default function FolderTreePicker({
@@ -43,10 +57,11 @@ export default function FolderTreePicker({
   excludedPaths: Set<string>;
   onChange: (next: Set<string>) => void;
 }) {
-  // children[path] = subdirs immediately inside `path`. undefined =
-  // not requested yet, [] = loaded with no children, populated array
-  // = loaded with children.
-  const [childrenMap, setChildrenMap] = useState<Map<string, Node[]>>(new Map());
+  // childrenMap[path] = direct children (subdirs + files + truncation
+  // flags) of `path`. undefined = not requested yet.
+  const [childrenMap, setChildrenMap] = useState<Map<string, ChildrenPayload>>(
+    new Map(),
+  );
   const [loadState, setLoadState] = useState<Map<string, LoadState>>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set([root]));
   const [err, setErr] = useState<string | null>(null);
@@ -63,7 +78,14 @@ export default function FolderTreePicker({
     setLoadState((m) => new Map(m).set(path, "loading"));
     try {
       const r = await api.listSubdirs(path);
-      setChildrenMap((m) => new Map(m).set(path, r.subdirs));
+      setChildrenMap((m) =>
+        new Map(m).set(path, {
+          subdirs: r.subdirs,
+          files: r.files,
+          truncated: r.truncated,
+          totalImmediateFiles: r.totalImmediateFiles,
+        }),
+      );
       setLoadState((m) => new Map(m).set(path, "loaded"));
     } catch (e) {
       setErr((e as Error).message);
@@ -93,11 +115,14 @@ export default function FolderTreePicker({
   // descendant under it is". We can only know about descendants we've
   // already loaded — undiscovered descendants count as "fully on".
   function hasExcludedDescendant(path: string): boolean {
-    const kids = childrenMap.get(path);
-    if (!kids) return false;
-    for (const k of kids) {
+    const payload = childrenMap.get(path);
+    if (!payload) return false;
+    for (const k of payload.subdirs) {
       if (excludedPaths.has(k.path)) return true;
       if (hasExcludedDescendant(k.path)) return true;
+    }
+    for (const f of payload.files) {
+      if (excludedPaths.has(f.path)) return true;
     }
     return false;
   }
@@ -201,7 +226,7 @@ function Subtree({
 }: {
   parentPath: string;
   depth: number;
-  childrenMap: Map<string, Node[]>;
+  childrenMap: Map<string, ChildrenPayload>;
   loadState: Map<string, LoadState>;
   expanded: Set<string>;
   isEffectivelyExcluded: (path: string) => boolean;
@@ -210,7 +235,7 @@ function Subtree({
   onToggle: (path: string) => void;
   onToggleExpanded: (path: string) => void;
 }) {
-  const children = childrenMap.get(parentPath);
+  const payload = childrenMap.get(parentPath);
   const state = loadState.get(parentPath);
 
   if (state === "loading") {
@@ -224,24 +249,32 @@ function Subtree({
       </div>
     );
   }
-  if (!children || children.length === 0) {
+  if (!payload || (payload.subdirs.length === 0 && payload.files.length === 0)) {
     if (depth === 0) {
       return (
         <div className="px-3 py-3 text-xs text-stone-400 italic text-center">
-          No subfolders.
+          Empty folder.
         </div>
       );
     }
-    return null;
+    return (
+      <div
+        className="text-[11px] text-stone-400 italic py-1"
+        style={{ paddingLeft: `${36 + depth * 18}px` }}
+      >
+        No indexable files or sub-folders here.
+      </div>
+    );
   }
 
-  // Find the largest estimate among siblings so the bar visual stays
-  // relative to the column the user is currently looking at.
-  const max = Math.max(...children.map((c) => c.estimate), 1);
+  // Sibling-relative bar maximum is based on the largest subdir
+  // estimate; loose files don't share the same scale (they're a
+  // single file each).
+  const max = Math.max(...payload.subdirs.map((c) => c.estimate), 1);
 
   return (
     <ul>
-      {children.map((node) => (
+      {payload.subdirs.map((node) => (
         <TreeRow
           key={node.path}
           node={node}
@@ -270,7 +303,84 @@ function Subtree({
           )}
         </TreeRow>
       ))}
+      {payload.files.map((f) => (
+        <FileRow
+          key={f.path}
+          file={f}
+          depth={depth}
+          excludedSelf={isEffectivelyExcluded(f.path)}
+          ancestorExcluded={isAncestorExcluded(f.path)}
+          onToggle={() => onToggle(f.path)}
+        />
+      ))}
+      {payload.truncated && (
+        <li
+          className="text-[11px] text-stone-400 italic py-1"
+          style={{ paddingLeft: `${36 + depth * 18}px` }}
+        >
+          + {payload.totalImmediateFiles - payload.files.length} more files here
+          (showing first {payload.files.length}). Indexing will still pick them all up.
+        </li>
+      )}
     </ul>
+  );
+}
+
+function FileRow({
+  file,
+  depth,
+  excludedSelf,
+  ancestorExcluded,
+  onToggle,
+}: {
+  file: FileNode;
+  depth: number;
+  excludedSelf: boolean;
+  ancestorExcluded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <li>
+      <div
+        className={
+          "flex items-center gap-2 py-1 text-xs hover:bg-stone-50 transition border-b border-stone-100 last:border-b-0 " +
+          (excludedSelf ? "opacity-60" : "")
+        }
+        style={{ paddingLeft: `${12 + depth * 18}px`, paddingRight: "12px" }}
+      >
+        {/* Files have no chevron — placeholder keeps columns aligned. */}
+        <span className="shrink-0 w-5 h-5" />
+        <input
+          type="checkbox"
+          checked={!excludedSelf}
+          onChange={onToggle}
+          disabled={ancestorExcluded}
+          className="accent-stone-900 shrink-0"
+          title={
+            ancestorExcluded
+              ? "A parent folder is unchecked — uncheck it first to control this file individually."
+              : undefined
+          }
+        />
+        <span
+          className={
+            "truncate flex-1 font-mono text-[11px] " +
+            (excludedSelf ? "line-through text-stone-400" : "text-stone-700")
+          }
+          title={file.path}
+        >
+          {file.name}
+        </span>
+        <span
+          className={
+            "shrink-0 tabular-nums text-[11px] " +
+            (excludedSelf ? "text-stone-300 line-through" : "text-stone-500")
+          }
+        >
+          {bytes(file.size)}
+        </span>
+      </div>
+    </li>
   );
 }
 
