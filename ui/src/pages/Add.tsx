@@ -10,7 +10,6 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, type SourceRow } from "../lib/api.ts";
 import { shortPath } from "../lib/format.ts";
-import ScanConfirmModal from "../components/ScanConfirmModal.tsx";
 import PickedFilesConfirmModal from "../components/PickedFilesConfirmModal.tsx";
 import {
   CloudIcon,
@@ -118,9 +117,12 @@ export default function Add() {
   const [recommended, setRecommended] = useState<Recommended[]>(FALLBACK_RECOMMENDED);
   const [indexed, setIndexed] = useState<IndexedRoot[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [confirmPath, setConfirmPath] = useState<string | null>(null);
   const [pickedFiles, setPickedFiles] = useState<PickedFile[] | null>(null);
   const bridge = window.bitrove;
+
+  function goConfigure(abs: string) {
+    navigate(`/add/scan?path=${encodeURIComponent(abs)}`);
+  }
 
   useEffect(() => {
     // Electron bridge can confirm which of the recommended sources actually
@@ -162,7 +164,7 @@ export default function Add() {
       return;
     }
     const folder = await bridge.pickFolder();
-    if (folder) setConfirmPath(folder);
+    if (folder) goConfigure(folder);
   }
 
   async function pickAndAddFiles() {
@@ -188,28 +190,6 @@ export default function Add() {
     }
   }
 
-  async function confirmStartScan(
-    extraIncludeExts: string[],
-    watchAfterScan: boolean,
-    excludePaths: string[],
-  ) {
-    if (!confirmPath) return;
-    setBusy(confirmPath);
-    try {
-      await api.ingestScan(confirmPath, {
-        extraIncludeExts,
-        watchAfterScan,
-        excludes: excludePaths,
-      });
-      setConfirmPath(null);
-      // Send the user where they can see progress
-      navigate("/jobs");
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
 
   const indexedPaths = new Set(indexed.map((i) => i.rootPath));
 
@@ -244,7 +224,7 @@ export default function Add() {
                 abs={abs}
                 already={already}
                 busy={busy === abs}
-                onAdd={() => setConfirmPath(abs)}
+                onAdd={() => goConfigure(abs)}
               />
             );
           })}
@@ -313,7 +293,7 @@ export default function Add() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setConfirmPath(src.rootPath)}
+                  onClick={() => goConfigure(src.rootPath)}
                   className="text-xs px-2.5 py-1 rounded-md text-stone-700 hover:bg-stone-100"
                 >
                   Re-index
@@ -324,13 +304,6 @@ export default function Add() {
         </section>
       )}
 
-      {confirmPath && (
-        <ScanConfirmModal
-          path={confirmPath}
-          onCancel={() => setConfirmPath(null)}
-          onConfirm={confirmStartScan}
-        />
-      )}
       {pickedFiles && (
         <PickedFilesConfirmModal
           files={pickedFiles}

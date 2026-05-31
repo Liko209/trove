@@ -2,6 +2,7 @@ import { Link, Route, Routes, useLocation, Navigate } from "react-router-dom";
 import Library from "./pages/Library.tsx";
 import Sources from "./pages/Sources.tsx";
 import Add from "./pages/Add.tsx";
+import ScanConfigure from "./pages/ScanConfigure.tsx";
 import Jobs from "./pages/Jobs.tsx";
 import Agents from "./pages/Agents.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/library" replace />} />
           <Route path="/library" element={<Library />} />
           <Route path="/add" element={<Add />} />
+          <Route path="/add/scan" element={<ScanConfigure />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/settings" element={<Settings />} />
           {/* Reachable by URL or contextual link, not in primary nav */}
