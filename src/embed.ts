@@ -3,7 +3,15 @@
 // 重要：bge-m3 使用 CLS pooling，由 llama-server 启动参数 --pooling cls 保证。
 // bge-m3 在 retrieval 任务下 query 和 passage 都不需要 prompt prefix（与 e5 不同）。
 
-const EMBED_URL = process.env.EMBED_URL ?? "http://127.0.0.1:8765/v1/embeddings";
+// electron/services.ts passes EMBED_URL as the bare host (no path) so
+// admin can also probe `${EMBED_URL}/health`. Accept either form: if
+// the env value already names /v1/embeddings, use it as-is; otherwise
+// append. This avoided a long-running misery where POSTs went to the
+// llama-server root and came back 404 File Not Found.
+const EMBED_URL_RAW = process.env.EMBED_URL ?? "http://127.0.0.1:8765";
+const EMBED_URL = EMBED_URL_RAW.includes("/v1/embeddings")
+  ? EMBED_URL_RAW
+  : `${EMBED_URL_RAW.replace(/\/+$/, "")}/v1/embeddings`;
 
 export const EMBED_DIM = 1024;
 
