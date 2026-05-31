@@ -1,7 +1,13 @@
 // 通过本地 llama-server 调 bge-reranker-v2-m3
 // 输出 relevance_score（logit）：越大越相关，符号无下界（实测中可见 +10 ~ -15 区间）
 
-const RERANK_URL = process.env.RERANK_URL ?? "http://127.0.0.1:8766/v1/rerank";
+// Same EMBED_URL story (see embed.ts): services.ts passes the bare
+// host so /health probes work. Accept either form here — append
+// /v1/rerank when the env value is just the host.
+const RERANK_URL_RAW = process.env.RERANK_URL ?? "http://127.0.0.1:8766";
+const RERANK_URL = RERANK_URL_RAW.includes("/v1/rerank")
+  ? RERANK_URL_RAW
+  : `${RERANK_URL_RAW.replace(/\/+$/, "")}/v1/rerank`;
 
 // 与 embed.ts 同款 sanitizer
 function sanitizeForJson(s: string): string {
