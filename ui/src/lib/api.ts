@@ -289,6 +289,50 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ tier }),
     }),
+  // Scheduled tasks — deferred scans / ingests fired by the
+  // backend scheduler at a wall-clock time.
+  listScheduled: () =>
+    j<{
+      tasks: {
+        id: string;
+        kind: "scan" | "ingest-files";
+        runAt: number;
+        createdAt: number;
+        params: {
+          root?: string;
+          paths?: string[];
+          watchAfterScan?: boolean;
+          excludes?: string[];
+          extraIncludeExts?: string[];
+          force?: boolean;
+        };
+      }[];
+    }>("/api/scheduled"),
+  scheduleScan: (params: {
+    root: string;
+    runAt: number;
+    watchAfterScan?: boolean;
+    excludes?: string[];
+    extraIncludeExts?: string[];
+    force?: boolean;
+  }) =>
+    j<{ task: { id: string } }>("/api/scheduled", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: "scan",
+        runAt: params.runAt,
+        params: {
+          root: params.root,
+          watchAfterScan: params.watchAfterScan,
+          excludes: params.excludes,
+          extraIncludeExts: params.extraIncludeExts,
+          force: params.force,
+        },
+      }),
+    }),
+  cancelScheduled: (id: string) =>
+    j<{ ok: true }>(`/api/scheduled/${id}`, { method: "DELETE" }),
   watcherHistory: () =>
     j<{
       events: (

@@ -41,6 +41,10 @@ export default function ScanConfigure() {
   const [excludedTreePaths, setExcludedTreePaths] = useState<Set<string>>(new Set());
   const [watchAfter, setWatchAfter] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // Run-when: "now" or "tonight" (1 AM next occurrence). Heavy tasks
+  // (estimated > 10 min) benefit from being deferred to off-hours so
+  // the user's Mac isn't fighting them during work.
+  const [runWhen, setRunWhen] = useState<"now" | "tonight">("now");
 
   useEffect(() => {
     if (!path) return;
@@ -108,16 +112,38 @@ export default function ScanConfigure() {
     return [...excludedTreePaths].map((p) => (p.endsWith("/") ? p : p + "/"));
   }
 
+  // Next occurrence of 1 AM local time. If it's already past 1 AM
+  // today, rolls to tomorrow. Matches scheduler.nextAt1AM() on the
+  // backend conceptually; computing client-side keeps the modal copy
+  // honest about exactly when it'll run.
+  function nextAt1AM(): number {
+    const d = new Date();
+    d.setHours(1, 0, 0, 0);
+    if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }
+
   async function start() {
     if (!preview || effectiveIndexable === 0 || perm.state !== "granted") return;
     setSubmitting(true);
     try {
-      await api.ingestScan(path, {
-        extraIncludeExts: [...overrides],
-        watchAfterScan: watchAfter,
-        excludes: excludePaths(),
-      });
-      navigate("/jobs");
+      if (runWhen === "tonight") {
+        await api.scheduleScan({
+          root: path,
+          runAt: nextAt1AM(),
+          watchAfterScan: watchAfter,
+          excludes: excludePaths(),
+          extraIncludeExts: [...overrides],
+        });
+        navigate("/dashboard");
+      } else {
+        await api.ingestScan(path, {
+          extraIncludeExts: [...overrides],
+          watchAfterScan: watchAfter,
+          excludes: excludePaths(),
+        });
+        navigate("/jobs");
+      }
     } catch (e) {
       setErr((e as Error).message);
       setSubmitting(false);
@@ -192,6 +218,35 @@ export default function ScanConfigure() {
 
       {preview && perm.state === "granted" && (
         <>
+          {/* Heavy task warning — only when estimated time crosses
+              the "user might want to schedule this" threshold (~10
+              min). We don't want to noisily warn on tiny scans. */}
+          {preview.estimatedSeconds > 600 && (
+            <section className="mb-6">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="font-semibold text-amber-900">
+                    This is a heavy task
+                  </span>
+                  <span className="text-xs text-amber-700">
+                    ~{formatDurationSeconds(preview.estimatedSeconds)} ·{" "}
+                    {effectiveIndexable.toLocaleString()} files
+                  </span>
+                </div>
+                <p className="text-xs text-amber-900/80 leading-relaxed">
+                  Bitrove will use significant CPU + a few GB of RAM during
+                  indexing. You can keep using your Mac, but may notice fans
+                  or slowdown. The watcher pauses when you click Stop —
+                  re-running picks up where it left off (cached by mtime).
+                </p>
+                <p className="text-xs text-amber-900/80 leading-relaxed mt-1.5">
+                  💡 Big batches are typically more comfortable to run before
+                  bed.
+                </p>
+              </div>
+            </section>
+          )}
+
           {/* ── Overview ───────────────────────────────────────── */}
           <section className="mb-10">
             <h2 className="t-section mb-3">Overview</h2>
@@ -329,6 +384,47 @@ export default function ScanConfigure() {
             </section>
           )}
 
+          {/* ── Run when ────────────────────────────────────── */}
+          <section className="mb-10">
+            <h2 className="t-section mb-3">Run when?</h2>
+            <div className="space-y-2">
+              <label className="flex items-start gap-3 p-3 rounded-lg border border-stone-200 cursor-pointer hover:bg-stone-50">
+                <input
+                  type="radio"
+                  name="runWhen"
+                  checked={runWhen === "now"}
+                  onChange={() => setRunWhen("now")}
+                  className="mt-1 accent-stone-900"
+                />
+                <div>
+                  <div className="text-sm font-medium text-stone-900">Now</div>
+                  <div className="text-xs text-stone-500 mt-0.5">
+                    Start indexing immediately.
+                  </div>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 p-3 rounded-lg border border-stone-200 cursor-pointer hover:bg-stone-50">
+                <input
+                  type="radio"
+                  name="runWhen"
+                  checked={runWhen === "tonight"}
+                  onChange={() => setRunWhen("tonight")}
+                  className="mt-1 accent-stone-900"
+                />
+                <div>
+                  <div className="text-sm font-medium text-stone-900">
+                    Tonight at 1:00 AM
+                  </div>
+                  <div className="text-xs text-stone-500 mt-0.5 leading-relaxed">
+                    Bitrove waits until 1 AM local time, then runs the scan
+                    in the background. Great for heavy first-time imports —
+                    your Mac stays responsive during the day.
+                  </div>
+                </div>
+              </label>
+            </div>
+          </section>
+
           {/* ── Watch toggle ────────────────────────────────── */}
           <section className="mb-10">
             <h2 className="t-section mb-3">Keep watching</h2>
@@ -376,7 +472,11 @@ export default function ScanConfigure() {
           }
           className="px-5 py-1.5 rounded-md text-sm font-medium bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {submitting ? "Starting…" : "Start indexing"}
+          {submitting
+            ? "Starting…"
+            : runWhen === "tonight"
+              ? "Schedule for 1 AM"
+              : "Start indexing"}
         </button>
       </div>
     </div>

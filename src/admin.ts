@@ -58,6 +58,13 @@ import {
   watcherStatus,
   getWatcherHistory,
 } from "./watcher.ts";
+import {
+  initScheduler,
+  scheduleTask,
+  listScheduled,
+  cancelScheduled,
+  type ScheduledTask,
+} from "./scheduler.ts";
 import { deriveCategory, fileTypeBucket } from "./category.ts";
 import {
   CATEGORIES as TAG_CATEGORIES,
@@ -1297,4 +1304,53 @@ app.listen(PORT, "127.0.0.1", () => {
   // watched roots. Failures here are non-fatal — incremental indexing
   // simply won't run, the user can still re-scan manually.
   initWatchers().catch((e) => console.error("[watcher] init failed:", e));
+  // Scheduler — fire deferred scans at their wall-clock time. Runs
+  // a task by re-POSTing the existing scan / ingest-files endpoint
+  // through a local fetch so we share the same code path as live
+  // user-triggered jobs.
+  initScheduler(async (t) => {
+    const url = `http://127.0.0.1:${PORT}/api/ingest/${t.kind === "scan" ? "scan" : "files"}`;
+    const body =
+      t.kind === "scan"
+        ? {
+            root: t.params.root,
+            watchAfterScan: t.params.watchAfterScan ?? true,
+            excludes: t.params.excludes ?? [],
+            extraIncludeExts: t.params.extraIncludeExts ?? [],
+            force: t.params.force ?? false,
+          }
+        : { paths: t.params.paths ?? [] };
+    await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  });
+});
+
+// ── /api/scheduled ───────────────────────────────────────
+// Defer a scan / ingest-files job to a wall-clock time. Used by
+// ScanConfigure's "Run when?" → "Tonight at 1 AM" flow.
+app.post("/api/scheduled", (req, res) => {
+  const kind = req.body?.kind as ScheduledTask["kind"];
+  const runAt = Number(req.body?.runAt);
+  if (kind !== "scan" && kind !== "ingest-files") {
+    return res.status(400).json({ error: "kind must be 'scan' or 'ingest-files'" });
+  }
+  if (!Number.isFinite(runAt) || runAt < Date.now() - 1000) {
+    return res.status(400).json({ error: "runAt must be a future ms-epoch timestamp" });
+  }
+  const params = (req.body?.params ?? {}) as ScheduledTask["params"];
+  const t = scheduleTask({ kind, runAt, params });
+  res.json({ task: t });
+});
+
+app.get("/api/scheduled", (_req, res) => {
+  res.json({ tasks: listScheduled() });
+});
+
+app.delete("/api/scheduled/:id", (req, res) => {
+  const ok = cancelScheduled(req.params.id);
+  if (!ok) return res.status(404).json({ error: "not found" });
+  res.json({ ok: true });
 });

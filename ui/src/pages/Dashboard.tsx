@@ -217,6 +217,8 @@ export default function Dashboard() {
 
       <ActiveJobsBanner jobs={active} />
 
+      <ScheduledTasksSection />
+
       {/* ── Key metrics ──────────────────────────────────────── */}
       <section className="mb-10">
         <h2 className="t-section mb-3">At a glance</h2>
@@ -487,4 +489,68 @@ function settingsSectionForLabel(label: string): string | undefined {
     default:
       return "files";
   }
+}
+
+/* ── Scheduled tasks ─────────────────────────────────────────────
+   Shows pending scheduled scans (e.g. "Tonight at 1 AM"). Polled
+   every 30s; ticks at the scheduler's resolution. Each row has a
+   Cancel button. */
+function ScheduledTasksSection() {
+  const [tasks, setTasks] = useState<Awaited<ReturnType<typeof api.listScheduled>>["tasks"]>([]);
+
+  async function load() {
+    try {
+      const r = await api.listScheduled();
+      setTasks(r.tasks);
+    } catch {}
+  }
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (tasks.length === 0) return null;
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-baseline justify-between mb-2">
+        <h2 className="t-section">Scheduled</h2>
+        <span className="text-[10px] text-stone-400 tabular-nums">
+          {tasks.length} pending
+        </span>
+      </div>
+      <div className="bg-white border border-stone-200 rounded-xl divide-y divide-stone-100">
+        {tasks.map((t) => {
+          const when = new Date(t.runAt).toLocaleString();
+          const target =
+            t.params.root ?? `${(t.params.paths ?? []).length} picked files`;
+          const display = typeof target === "string" ? shortPath(target) : target;
+          return (
+            <div key={t.id} className="px-4 py-3 flex items-center gap-3 text-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="font-mono text-stone-800 truncate" title={String(target)}>
+                  {display}
+                </div>
+                <div className="text-xs text-stone-500 mt-0.5">
+                  Runs {when} · {t.kind === "scan" ? "folder scan" : "file ingest"}
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!confirm(`Cancel scheduled scan?`)) return;
+                  await api.cancelScheduled(t.id);
+                  load();
+                }}
+                className="text-xs px-2.5 py-1 rounded-md text-stone-500 hover:text-rose-700 hover:bg-rose-50"
+              >
+                Cancel
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
