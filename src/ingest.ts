@@ -21,7 +21,8 @@ import {
   clearAliasMissing,
 } from "./db.ts";
 import { chunkText } from "./chunk.ts";
-import { extractText, classify } from "./extract.ts";
+import { extractText, extractOcr, classify } from "./extract.ts";
+import { readIngestSettings } from "./settings.ts";
 import { makeCatalogCard } from "./catalog.ts";
 import { hashFile } from "./hash.ts";
 
@@ -260,9 +261,46 @@ export async function ingestFile(
       }
       throw e;
     }
-    const chunks = chunkText(text);
+    let chunks = chunkText(text);
     if (chunks.length === 0) {
-      return fallbackToCatalog("Empty text content");
+      // Image-only PDF is the common case here: pdfjs returns 0 text
+      // because the file is a scan with no text layer. If the user
+      // has opted into OCR, run it now and treat the result as the
+      // real text. Otherwise flag the file so the UI can show
+      // "Image-only · enable OCR" and a later batch can target it.
+      if (path.toLowerCase().endsWith(".pdf")) {
+        const settings = await readIngestSettings();
+        if (settings.ocrEnabled) {
+          try {
+            const { text: ocrText } = await extractOcr(path);
+            chunks = chunkText(ocrText);
+          } catch (e) {
+            console.warn(`[ingest] OCR failed for ${path}:`, (e as Error).message);
+          }
+        }
+        if (chunks.length === 0) {
+          deleteSource(db, path);
+          upsertSource(db, {
+            source_path: path,
+            kind: "text",
+            source_mtime: mtimeISO,
+            indexed_at: new Date().toISOString(),
+            chunk_count: 0,
+            mtime_ms: mtimeMs,
+            size_bytes: sizeBytes,
+            content_hash: contentHash,
+            missing_since: null,
+            watched_root: opts.watchedRoot ?? null,
+            needs_ocr: 1,
+          });
+          return { status: "ingested", path, kind: "text", chunks: 0, ms: Date.now() - t0 };
+        }
+        // OCR succeeded — fall through into the normal embed loop
+        // below with the OCR'd chunks. The upsertSource at the end
+        // will set needs_ocr=0 since we now have real chunks.
+      } else {
+        return fallbackToCatalog("Empty text content");
+      }
     }
 
     deleteSource(db, path);

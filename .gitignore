@@ -28,6 +28,11 @@ dist-app/
 dist-electron/
 ui/dist/
 
+# Swift bitrove-ocr build cache. Universal binary output is committed
+# at release time to resources/bin/ (already ignored above).
+swift/bitrove-ocr/.build/
+swift/bitrove-ocr/.build-*/
+
 # Test / temp
 *.log
 

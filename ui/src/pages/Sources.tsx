@@ -275,6 +275,14 @@ export default function Sources() {
                               +{r.aliases.length} {r.aliases.length === 1 ? "copy" : "copies"}
                             </span>
                           )}
+                          {r.needs_ocr === 1 && (
+                            <span
+                              className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200"
+                              title="No text layer in this PDF — content isn't searchable. Enable OCR in Settings → Models to extract it."
+                            >
+                              Image-only
+                            </span>
+                          )}
                         </div>
                         {r.kind === "catalog" && (
                           <span className="text-[10px] uppercase tracking-wider text-violet-700 bg-violet-100 px-1 py-0.5 rounded">

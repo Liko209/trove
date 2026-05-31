@@ -19,6 +19,8 @@ import {
   upsertTag,
   getTag,
   allTags,
+  countOcrPending,
+  listOcrPending,
 } from "./db.ts";
 import { ingestFile } from "./ingest.ts";
 import { classify } from "./extract.ts";
@@ -386,6 +388,91 @@ app.put("/api/models/active", async (req, res) => {
   res.json({ tier });
 });
 
+// ── /api/ocr ──────────────────────────────────────────────
+// Get / set the OCR toggle. extract.ts/ingest.ts read it via
+// readIngestSettings() on the next ingest. Existing needs_ocr=1
+// rows are untouched until the user clicks "Run OCR on N files"
+// which kicks off the batch endpoint below.
+app.get("/api/ocr/status", (_req, res) => {
+  const db = openDb();
+  const pending = countOcrPending(db);
+  db.close();
+  readIngestSettings().then((s) => {
+    res.json({ enabled: !!s.ocrEnabled, pending });
+  });
+});
+
+app.put("/api/ocr/enabled", async (req, res) => {
+  const enabled = !!req.body?.enabled;
+  const current = await readIngestSettings();
+  await writeIngestSettings({ ...current, ocrEnabled: enabled });
+  res.json({ enabled });
+});
+
+// Batch-rerun ingest on every file currently marked needs_ocr=1.
+// Reuses the existing ingest job pipeline so progress streams
+// through the same JobProgress UI.
+app.post("/api/ocr/run-all", async (_req, res) => {
+  const settings = await readIngestSettings();
+  if (!settings.ocrEnabled) {
+    return res.status(400).json({ error: "OCR is disabled — enable it in Settings → Models first" });
+  }
+  const db = openDb();
+  const pending = listOcrPending(db);
+  db.close();
+  if (pending.length === 0) {
+    return res.status(404).json({ error: "no files awaiting OCR" });
+  }
+  const paths = pending.map((r) => r.source_path);
+  const job = createJob("ingest", `OCR ${paths.length} image-only PDF${paths.length === 1 ? "" : "s"}`);
+  res.json({ jobId: job.id, total: paths.length });
+
+  (async () => {
+    const t0 = Date.now();
+    emitJob(job.id, { type: "started", total: paths.length });
+    const db2 = openDb();
+    let done = 0;
+    let stoppedEarly = false;
+    try {
+      for (const p of paths) {
+        if (shouldStop(job.id)) {
+          stoppedEarly = true;
+          break;
+        }
+        // force=true so the mtime/hash skip doesn't kick in — the
+        // text content "changed" in the sense that OCR can now
+        // extract it, even though bytes are identical.
+        const r = await ingestFile(db2, p, {
+          force: true,
+          includeDuplicates: true,
+        });
+        done++;
+        emitJob(job.id, {
+          type: "item",
+          done,
+          total: paths.length,
+          current: p,
+          status: r.status,
+          error: r.status === "error" ? r.error : undefined,
+        });
+      }
+    } finally {
+      db2.close();
+    }
+    const finalState = getJob(job.id)!;
+    emitJob(job.id, {
+      type: stoppedEarly ? "stopped" : "done",
+      done,
+      total: paths.length,
+      ingested: finalState.ingested,
+      errors: finalState.errors,
+      ms: Date.now() - t0,
+    });
+  })().catch((e) => {
+    emitJob(job.id, { type: "failed", error: (e as Error).message });
+  });
+});
+
 // ── /api/watcher/history ───────────────────────────────────
 // Recent (last 200) events from every watched root: scan start /
 // complete, debounce drains, ingest errors. Used by the Settings
@@ -526,12 +613,13 @@ app.get("/api/stats", (_req, res) => {
        WHERE missing_since IS NULL`,
     )
     .get() as { n: number }).n;
+  const ocrPending = countOcrPending(db);
   db.close();
   const total = s.reduce(
     (acc, r) => ({ sources: acc.sources + r.sources, chunks: acc.chunks + r.chunks }),
     { sources: 0, chunks: 0 },
   );
-  res.json({ byKind: s, total, dbPath, dbSize, indexedBytes });
+  res.json({ byKind: s, total, dbPath, dbSize, indexedBytes, ocrPending });
 });
 
 // ── /api/sources (list) ───────────────────────────────────

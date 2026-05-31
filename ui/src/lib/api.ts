@@ -8,6 +8,10 @@ export type Stats = {
   dbPath: string;
   dbSize: number;
   indexedBytes: number;
+  // Count of indexed files that produced no searchable text — almost
+  // always image-only / scanned PDFs without a text layer. Used by
+  // the Dashboard and the Settings → Models OCR section.
+  ocrPending: number;
 };
 
 export type FileBucket =
@@ -35,6 +39,10 @@ export type SourceRow = {
   // Strategy B aliases — alternate paths whose contents hash to the
   // same xxh3 as this source. Empty for sources with no duplicates.
   aliases?: string[];
+  // 1 if the file produced no extractable text (e.g. image-only
+  // scanned PDF). UI surfaces an "Image-only" badge and the
+  // Settings → Models OCR toggle batches these for Vision OCR.
+  needs_ocr?: 0 | 1;
 };
 
 export type SourceList = {
@@ -307,6 +315,16 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ tier }),
     }),
+  // OCR toggle + batch rerun for image-only PDFs.
+  ocrStatus: () => j<{ enabled: boolean; pending: number }>("/api/ocr/status"),
+  setOcrEnabled: (enabled: boolean) =>
+    j<{ enabled: boolean }>("/api/ocr/enabled", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }),
+  runOcrBatch: () =>
+    j<{ jobId: string; total: number }>("/api/ocr/run-all", { method: "POST" }),
   // Scheduled tasks — deferred scans / ingests fired by the
   // backend scheduler at a wall-clock time.
   listScheduled: () =>

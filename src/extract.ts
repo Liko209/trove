@@ -53,3 +53,25 @@ export async function extractText(path: string): Promise<ExtractedText> {
 
   throw new Error(`unsupported extension: ${ext}`);
 }
+
+// Run the bundled bitrove-ocr binary (macOS Vision Framework) on a
+// file and return the recognized text. Used by ingest.ts as a
+// fallback when a PDF's text layer is empty AND the user has
+// opted into OCR in Settings → Models.
+//
+// The binary path comes from BITROVE_OCR_BIN, which electron's
+// services.ts sets when spawning the admin. In a non-electron dev
+// run (npx tsx src/admin.ts), it falls back to the repo path so
+// you can still exercise the OCR path locally.
+export async function extractOcr(path: string): Promise<ExtractedText> {
+  const bin =
+    process.env.BITROVE_OCR_BIN ??
+    new URL("../resources/bin/bitrove-ocr", import.meta.url).pathname;
+  // 10 minutes hard cap — at ~1s/page Vision can comfortably handle
+  // hundreds of pages, but a stuck process shouldn't block ingest.
+  const { stdout } = await exec(bin, [path], {
+    maxBuffer: 256 * 1024 * 1024,
+    timeout: 10 * 60 * 1000,
+  });
+  return { text: stdout };
+}

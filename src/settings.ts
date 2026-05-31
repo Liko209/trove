@@ -26,6 +26,12 @@ export type IngestSettings = {
   // and which embed.ts pooling/prefix strategy is used. Defaults to
   // "light" (bge-m3) so existing installs keep working.
   activeModelTier?: "light" | "standard" | "quality" | "max";
+  // Run macOS Vision OCR on PDFs that have no extractable text
+  // layer. Off by default — OCR is slow (~1s/page) and most users'
+  // PDFs are text PDFs that don't need it. Flipping it on triggers
+  // the "Scanned PDFs" section in Settings → Models, which can also
+  // batch-rerun every existing needs_ocr=1 file.
+  ocrEnabled?: boolean;
 };
 
 // Curated defaults — biased toward "skip what is rarely knowledge".
@@ -145,6 +151,7 @@ export async function readIngestSettings(): Promise<IngestSettings> {
       watcherScanIntervalMin: clampMin(parsed.watcherScanIntervalMin, DEFAULT_WATCHER_INTERVAL_MIN),
       watcherDebounceMin: clampMin(parsed.watcherDebounceMin, DEFAULT_WATCHER_DEBOUNCE_MIN),
       activeModelTier: parsed.activeModelTier ?? "light",
+      ocrEnabled: parsed.ocrEnabled ?? false,
     };
     return cached;
   } catch {
@@ -187,6 +194,7 @@ export async function writeIngestSettings(
     watcherScanIntervalMin: clampMin(next.watcherScanIntervalMin, DEFAULT_WATCHER_INTERVAL_MIN),
     watcherDebounceMin: clampMin(next.watcherDebounceMin, DEFAULT_WATCHER_DEBOUNCE_MIN),
     activeModelTier: activeModelTier ?? "light",
+    ocrEnabled: next.ocrEnabled ?? cached?.ocrEnabled ?? false,
   };
   const p = settingsFilePath();
   await mkdir(dirname(p), { recursive: true });

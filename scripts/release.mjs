@@ -168,6 +168,9 @@ try {
   run("npm", ["version", bump, "-m", "chore: release v%s"]);
   versionBumped = true;
 
+  step("Building bitrove-ocr universal binary (arm64 + x86_64)");
+  run("node", ["scripts/build-ocr.mjs"]);
+
   step("Building admin + UI + Electron + DMG");
   run("npm", ["run", "app:dist"]);
 

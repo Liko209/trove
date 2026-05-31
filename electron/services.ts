@@ -15,6 +15,7 @@ import {
   modelsDir,
   dbPath,
   uiDistDir,
+  ocrBinary,
   summary,
 } from "./paths.ts";
 
@@ -155,6 +156,10 @@ export async function startAdmin(): Promise<void> {
     // Lets src/embed.ts + src/db.ts know which tier we're running on
     // without round-tripping ingest-settings.json on every call.
     BITROVE_MODEL_TIER: readActiveTier(),
+    // Path to the bundled macOS Vision OCR CLI. extract.ts reads it
+    // via process.env so the admin doesn't have to know about
+    // Electron's packaging layout.
+    BITROVE_OCR_BIN: ocrBinary(),
   };
 
   // In packaged mode the admin entry runs inside Electron's bundled Node;

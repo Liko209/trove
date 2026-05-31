@@ -118,6 +118,14 @@ export function openDb(): Database.Database {
     db.exec(`ALTER TABLE sources ADD COLUMN watched_root TEXT`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_watched_root ON sources(watched_root)`);
   }
+  if (!srcColNames.has("needs_ocr")) {
+    // 1 if the file was indexed but produced no searchable text (e.g.
+    // image-only scanned PDF). UI surfaces these so the user knows
+    // why the file isn't search-findable, and the Settings → Models
+    // OCR toggle can target them for a Vision Framework rerun.
+    db.exec(`ALTER TABLE sources ADD COLUMN needs_ocr INTEGER NOT NULL DEFAULT 0`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_needs_ocr ON sources(needs_ocr)`);
+  }
   // Add the excludes column on existing tables (idempotent).
   const wrCols = db.prepare(`PRAGMA table_info(watched_roots)`).all() as { name: string }[];
   if (!wrCols.some((c) => c.name === "excludes")) {
@@ -269,6 +277,7 @@ export type SourceMetaRow = SourceRow & {
   content_hash?: string | null;
   missing_since?: number | null;
   watched_root?: string | null;
+  needs_ocr?: 0 | 1;
 };
 
 export function upsertSource(
@@ -278,8 +287,9 @@ export function upsertSource(
   db.prepare(
     `INSERT INTO sources (
         source_path, kind, source_mtime, indexed_at, chunk_count,
-        mtime_ms, size_bytes, content_hash, missing_since, watched_root
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        mtime_ms, size_bytes, content_hash, missing_since, watched_root,
+        needs_ocr
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source_path) DO UPDATE SET
        kind=excluded.kind,
        source_mtime=excluded.source_mtime,
@@ -289,7 +299,8 @@ export function upsertSource(
        size_bytes=excluded.size_bytes,
        content_hash=excluded.content_hash,
        missing_since=excluded.missing_since,
-       watched_root=COALESCE(excluded.watched_root, sources.watched_root)`,
+       watched_root=COALESCE(excluded.watched_root, sources.watched_root),
+       needs_ocr=excluded.needs_ocr`,
   ).run(
     args.source_path,
     args.kind,
@@ -301,6 +312,7 @@ export function upsertSource(
     args.content_hash ?? null,
     args.missing_since ?? null,
     args.watched_root ?? null,
+    args.needs_ocr ?? 0,
   );
 }
 
@@ -551,6 +563,28 @@ export function listMissingSources(db: Database.Database): MissingSourceRow[] {
     .all() as MissingSourceRow[];
 }
 
+// Image-only PDFs (and anything else where extract.ts returned zero
+// text) get marked needs_ocr=1. This helper feeds both the dashboard
+// counter and the "Run OCR on N files" batch button in Settings.
+export function listOcrPending(db: Database.Database): {
+  source_path: string;
+  size_bytes: number | null;
+}[] {
+  return db
+    .prepare(
+      `SELECT source_path, size_bytes FROM sources
+       WHERE needs_ocr = 1 AND missing_since IS NULL
+       ORDER BY source_path`,
+    )
+    .all() as { source_path: string; size_bytes: number | null }[];
+}
+
+export function countOcrPending(db: Database.Database): number {
+  return (db
+    .prepare(`SELECT COUNT(*) AS n FROM sources WHERE needs_ocr = 1 AND missing_since IS NULL`)
+    .get() as { n: number }).n;
+}
+
 // ── file_aliases helpers (Strategy B dedup) ───────────────────
 //
 // An alias is a file on disk whose bytes match an already-indexed source.
@@ -726,7 +760,14 @@ export type ListSourcesResult = {
   total: number;
   returned: number;
   offset: number;
-  rows: { source_path: string; kind: ChunkKind; chunk_count: number; source_mtime: string; indexed_at: string }[];
+  rows: {
+    source_path: string;
+    kind: ChunkKind;
+    chunk_count: number;
+    source_mtime: string;
+    indexed_at: string;
+    needs_ocr: 0 | 1;
+  }[];
 };
 
 export function listSources(db: Database.Database, opts: ListSourcesOpts = {}): ListSourcesResult {
@@ -758,7 +799,7 @@ export function listSources(db: Database.Database, opts: ListSourcesOpts = {}): 
 
   const rows = db
     .prepare(
-      `SELECT source_path, kind, chunk_count, source_mtime, indexed_at FROM sources ${whereSql}
+      `SELECT source_path, kind, chunk_count, source_mtime, indexed_at, needs_ocr FROM sources ${whereSql}
        ORDER BY source_path LIMIT ? OFFSET ?`,
     )
     .all(...params, limit, offset) as ListSourcesResult["rows"];
@@ -770,7 +811,7 @@ export function listSources(db: Database.Database, opts: ListSourcesOpts = {}): 
 export function allSources(db: Database.Database): ListSourcesResult["rows"] {
   return db
     .prepare(
-      `SELECT source_path, kind, chunk_count, source_mtime, indexed_at FROM sources ORDER BY source_path`,
+      `SELECT source_path, kind, chunk_count, source_mtime, indexed_at, needs_ocr FROM sources ORDER BY source_path`,
     )
     .all() as ListSourcesResult["rows"];
 }

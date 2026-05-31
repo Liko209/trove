@@ -54,6 +54,17 @@ export function llamaServerBinary(): string {
   }
 }
 
+// Bundled macOS Vision OCR helper. Dev: reuse the locally-built
+// universal binary so `npm run dev` can exercise the OCR path
+// without going through release packaging. Packaged: lives next to
+// llama-server under Resources/bin/.
+export function ocrBinary(): string {
+  if (IS_PACKAGED) {
+    return join(RESOURCES, "bin", "bitrove-ocr");
+  }
+  return join(REPO_ROOT, "resources", "bin", "bitrove-ocr");
+}
+
 export function modelsDir(): string {
   if (IS_PACKAGED) {
     return join(app.getPath("userData"), "models");

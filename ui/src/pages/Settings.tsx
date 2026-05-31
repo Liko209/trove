@@ -757,6 +757,9 @@ function ModelsSection() {
         </div>
       </section>
 
+      <OcrSection />
+
+
       {pendingTier && pendingTier !== activeTier && activeTier && (
         <SwitchTierModal
           fromTier={activeTier}
@@ -770,5 +773,147 @@ function ModelsSection() {
         />
       )}
     </div>
+  );
+}
+
+/* ── OCR (Scanned PDFs) ─────────────────────────────────────────── */
+
+function OcrSection() {
+  const navigate = useNavigate();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [pending, setPending] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const refresh = () => {
+    api
+      .ocrStatus()
+      .then((s) => {
+        setEnabled(s.enabled);
+        setPending(s.pending);
+      })
+      .catch((e) => setErr((e as Error).message));
+  };
+
+  useEffect(() => {
+    refresh();
+    // Light polling — pending count drops as the OCR batch finishes.
+    const t = setInterval(refresh, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  async function toggle(next: boolean) {
+    setSaving(true);
+    setErr(null);
+    try {
+      const r = await api.setOcrEnabled(next);
+      setEnabled(r.enabled);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runBatch() {
+    setRunning(true);
+    setErr(null);
+    try {
+      const r = await api.runOcrBatch();
+      navigate(`/jobs/${r.jobId}`);
+    } catch (e) {
+      setErr((e as Error).message);
+      setRunning(false);
+    }
+  }
+
+  return (
+    <section className="mt-10">
+      <h2 className="t-h2 mb-2">Scanned PDFs (OCR)</h2>
+      <p className="text-stone-600 text-sm mb-6">
+        Some PDFs (scans, photos of documents, old books) carry no
+        text layer — Bitrove indexes them as "image-only" and can't
+        search their contents. Turn this on to let macOS Vision
+        Framework extract the text on-device. Everything stays on
+        this Mac, nothing is sent anywhere.
+      </p>
+
+      {err && (
+        <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded text-sm">
+          {err}
+        </div>
+      )}
+
+      <div className="bg-white border border-stone-200 rounded-xl p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-medium text-stone-900">OCR scanned PDFs</span>
+              {enabled && (
+                <span className="label-eyebrow text-emerald-700">On</span>
+              )}
+            </div>
+            <div className="text-xs text-stone-500 leading-relaxed">
+              When enabled, future ingests run Vision OCR on PDFs
+              with no text layer. ~1 second per page on Apple silicon.
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled === true}
+            disabled={saving || enabled === null}
+            onClick={() => toggle(!enabled)}
+            className={
+              "relative shrink-0 inline-flex h-6 w-11 items-center rounded-full transition " +
+              (enabled ? "bg-emerald-600" : "bg-stone-300") +
+              (saving || enabled === null ? " opacity-50 cursor-wait" : "")
+            }
+          >
+            <span
+              className={
+                "inline-block h-5 w-5 transform rounded-full bg-white shadow transition " +
+                (enabled ? "translate-x-5" : "translate-x-0.5")
+              }
+            />
+          </button>
+        </div>
+
+        {pending > 0 && (
+          <div className="mt-4 pt-4 border-t border-stone-100">
+            <div className="flex items-baseline justify-between gap-3 mb-2">
+              <span className="text-sm text-stone-700">
+                {pending.toLocaleString()} image-only PDF
+                {pending === 1 ? "" : "s"} waiting for OCR
+              </span>
+              <span className="text-[11px] text-stone-500">
+                ~{Math.max(1, Math.round((pending * 3) / 60))} min estimated
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={runBatch}
+              disabled={running || !enabled}
+              title={
+                !enabled
+                  ? "Turn on OCR first"
+                  : "Re-runs ingest with OCR on every image-only PDF"
+              }
+              className="text-sm px-3 py-1.5 rounded-md bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {running ? "Starting…" : `Run OCR on ${pending} file${pending === 1 ? "" : "s"}`}
+            </button>
+          </div>
+        )}
+
+        {pending === 0 && enabled && (
+          <div className="mt-4 pt-4 border-t border-stone-100 text-[11px] text-stone-500">
+            No image-only PDFs in the library right now. New scans
+            will automatically OCR any that come up.
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
