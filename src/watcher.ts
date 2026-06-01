@@ -37,6 +37,8 @@ import {
   markSourcesMissing,
   markAliasesMissing,
   getWatchedRootExcludes,
+  getSource,
+  clearMissing,
   type WatchedRoot,
 } from "./db.ts";
 import { walkSmart } from "./walker.ts";
@@ -196,9 +198,32 @@ export async function startWatching(root: WatchedRoot): Promise<void> {
     );
   };
 
+  // Cheap synchronous DB hits inside the chokidar handlers — these
+  // settle the "1 change pending" / "1 missing" header counters
+  // without waiting for the 30 min debounce. Heavy reconciliation
+  // still happens in drainDirty / runFullPass.
+  const reconcileOnAdd = (absent: string) => {
+    try {
+      const dbX = openDb();
+      try {
+        const src = getSource(dbX, absent);
+        if (src?.missing_since != null) clearMissing(dbX, absent);
+      } finally {
+        dbX.close();
+      }
+    } catch {}
+  };
+
   watcher
     .on("add", (p) => {
-      entry.dirty.add(resolve(p));
+      const absent = resolve(p);
+      entry.dirty.add(absent);
+      // If a previous unlink stamped this path missing (file moved
+      // away and now came back), drop the missing flag immediately
+      // so the user doesn't see a stale "1 missing" count next to a
+      // file that's clearly there. The ingest path will run later
+      // via drainDirty (and skipped-cached if mtime/size match).
+      reconcileOnAdd(absent);
       scheduleDrain();
     })
     .on("change", (p) => {
@@ -206,11 +231,14 @@ export async function startWatching(root: WatchedRoot): Promise<void> {
       scheduleDrain();
     })
     .on("unlink", (p) => {
-      // We don't drop the source row instantly on unlink — the user might
-      // be moving the file, or iCloud might be evicting a placeholder.
-      // The periodic full pass is where missing_since gets stamped.
+      // We don't stamp missing_since here — the user might still be
+      // mid-move and the periodic pass owns that decision. But we
+      // DO drop the path from the dirty set so the "N change pending"
+      // header isn't claiming a pending change against a file that
+      // no longer exists. If the file comes back via .on("add") it
+      // gets re-added cleanly.
       const absent = resolve(p);
-      console.log(`[watcher] file unlinked, will reconcile in next pass: ${absent}`);
+      entry.dirty.delete(absent);
     })
     .on("error", (e) => console.error(`[watcher] ${root.path}:`, e));
 
@@ -299,6 +327,11 @@ async function drainDirty(entry: WatchEntry): Promise<void> {
   let errored = 0;
   try {
     for (const p of paths) {
+      // The file may have been unlinked between the add event and
+      // now (user moved it back out, iCloud evicted, …). Skip those
+      // silently so a stale dirty entry doesn't show up as a job
+      // error a half-hour after the user already cleaned up.
+      if (!existsSync(p)) continue;
       entry.currentFile = p;
       // includeDuplicates=false: a watcher catching a freshly-added
       // duplicate should skip it just like the folder-scan flow does.
