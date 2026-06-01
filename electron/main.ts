@@ -653,9 +653,25 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  else focusMain();
+app.on("activate", async () => {
+  // Closing the window on macOS keeps the app running (per HIG); a
+  // subsequent dock click / Spotlight relaunch fires `activate`. The
+  // old handler only re-created the BrowserWindow but never called
+  // loadAppropriate(), so the window came back blank with no
+  // loaded URL — and because the titleBarStyle is hiddenInset, the
+  // drag region lives inside that not-yet-loaded web content, so
+  // the user couldn't even drag the empty window. Forcing them to
+  // Cmd+Q and relaunch.
+  if (BrowserWindow.getAllWindows().length === 0) {
+    try {
+      await createWindow();
+      await loadAppropriate();
+    } catch (e) {
+      bootLog(`activate reopen failed: ${(e as Error).message}`);
+    }
+  } else {
+    focusMain();
+  }
 });
 
 app.on("before-quit", async (e) => {
