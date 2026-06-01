@@ -374,6 +374,10 @@ export function watcherStatus(): {
   active: {
     root: string;
     dirty: number;
+    // Up to 20 of the actual paths in the dirty set so the UI can
+    // show "Waiting to ingest: foo.pdf, bar.md, …" rather than
+    // just "1 change pending" with no way to know what changed.
+    dirtyPaths: string[];
     scanning: boolean;
     currentFile: string | null;
   }[];
@@ -383,6 +387,7 @@ export function watcherStatus(): {
     active: [...active.values()].map((e) => ({
       root: e.root,
       dirty: e.dirty.size,
+      dirtyPaths: [...e.dirty].slice(0, 20),
       scanning: e.scanning,
       currentFile: e.currentFile,
     })),

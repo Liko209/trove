@@ -231,8 +231,13 @@ export default function Sources() {
       )}
 
       {view === "list" && data && data.rows.length > 0 && (
-        <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-          <table className="w-full text-sm">
+        // overflow-x-auto so a long Folder path (~/.../no-humans/docs)
+        // or a chunk count column doesn't get silently clipped on
+        // smaller windows — the user gets a horizontal scrollbar
+        // instead. min-w-[720px] on the table keeps the columns
+        // readable; below that the bar engages.
+        <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-stone-50 text-stone-600 text-xs uppercase tracking-wider">
               <tr>
                 <th className="px-3 py-2 w-8">

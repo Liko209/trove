@@ -126,6 +126,38 @@ function WatchedRootsSection() {
                     </div>
                   )}
 
+                  {/* Pending changes (chokidar saw a write, debounce
+                      timer hasn't fired yet). Shows the user what's
+                      about to be ingested so the "N change pending"
+                      line in the header isn't a black box. */}
+                  {live?.dirtyPaths && live.dirtyPaths.length > 0 && (
+                    <div className="mb-3 px-3 py-2.5 rounded-md bg-amber-50/70 border border-amber-200">
+                      <div className="flex items-baseline justify-between mb-1.5">
+                        <span className="t-section text-amber-800">
+                          Waiting to ingest ({dirty})
+                        </span>
+                        <span className="text-[10px] text-amber-700/80">
+                          watcher will pick these up at its next pass
+                        </span>
+                      </div>
+                      <ul className="space-y-0.5">
+                        {live.dirtyPaths.slice(0, 8).map((p) => {
+                          const name = p.split("/").pop() ?? p;
+                          return (
+                            <li key={p} className="text-xs font-mono text-amber-900 truncate" title={p}>
+                              {name}
+                            </li>
+                          );
+                        })}
+                        {dirty > 8 && (
+                          <li className="text-[11px] text-amber-700/70">
+                            + {(dirty - 8).toLocaleString()} more
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
                   {r.stats.top_subdirs.length > 0 && (
                     <>
                       <div className="t-section mb-2">Inside this folder</div>

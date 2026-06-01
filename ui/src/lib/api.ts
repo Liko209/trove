@@ -256,6 +256,9 @@ export const api = {
         active: {
           root: string;
           dirty: number;
+          // Sample of dirty file paths (capped server-side at 20) so
+          // expanded rows can show "Waiting to ingest: foo.pdf, …".
+          dirtyPaths: string[];
           scanning: boolean;
           currentFile: string | null;
         }[];
