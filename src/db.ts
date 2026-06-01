@@ -593,6 +593,22 @@ export function markSourcesMissing(
 }
 
 // When a previously-missing file reappears, clear the marker.
+// Stamp a single source row as missing_since=ts. Used by the
+// watcher's unlink handler so the user sees "1 missing" within a
+// few seconds of a real delete, instead of waiting up to 30 min
+// for the next periodic pass to notice. No-op if the row is
+// already marked missing.
+export function markSourceMissing(
+  db: Database.Database,
+  source_path: string,
+  ts: number,
+): void {
+  db.prepare(
+    `UPDATE sources SET missing_since = ?
+     WHERE source_path = ? AND missing_since IS NULL`,
+  ).run(ts, source_path);
+}
+
 export function clearMissing(db: Database.Database, source_path: string): void {
   db.prepare(`UPDATE sources SET missing_since = NULL WHERE source_path = ?`).run(source_path);
 }

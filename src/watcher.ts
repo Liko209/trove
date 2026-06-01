@@ -28,13 +28,14 @@
 
 import chokidar from "chokidar";
 import { resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { ingestFile } from "./ingest.ts";
 import {
   openDb,
   listWatchedRoots,
   markScanRun,
   markSourcesMissing,
+  markSourceMissing,
   markAliasesMissing,
   getWatchedRootExcludes,
   getSource,
@@ -97,7 +98,17 @@ type WatchEntry = {
   // the scan-confirm UI). Combined with the global settings excludes
   // when filtering chokidar events and walking the tree.
   perRootExcludes: string[];
+  // Per-path "we saw an unlink, give the user a few seconds to do an
+  // atomic move before we stamp missing_since" timers. add events
+  // for the same path cancel the pending mark.
+  pendingMissing: Map<string, NodeJS.Timeout>;
 };
+
+// Grace period between chokidar unlink and stamping missing_since.
+// Most atomic moves (Finder drag-and-drop, mv, editor save-replace)
+// fire unlink + add within tens of milliseconds; 3 s is comfortable
+// for that, while still feeling "live" for an actual delete.
+const UNLINK_TO_MISSING_GRACE_MS = 3000;
 
 const active = new Map<string, WatchEntry>();
 let initialized = false;
@@ -187,6 +198,7 @@ export async function startWatching(root: WatchedRoot): Promise<void> {
     scanning: false,
     currentFile: null,
     perRootExcludes,
+    pendingMissing: new Map(),
   };
 
   const { debounceMs, periodMs } = await getCadenceMs();
@@ -198,47 +210,97 @@ export async function startWatching(root: WatchedRoot): Promise<void> {
     );
   };
 
-  // Cheap synchronous DB hits inside the chokidar handlers — these
-  // settle the "1 change pending" / "1 missing" header counters
-  // without waiting for the 30 min debounce. Heavy reconciliation
-  // still happens in drainDirty / runFullPass.
-  const reconcileOnAdd = (absent: string) => {
+  // Cheap synchronous DB + stat hits inside the chokidar handlers
+  // so the "1 change pending" / "1 missing" header counters reflect
+  // reality immediately, without waiting for the 30 min debounce.
+  // Heavy work (extract + chunk + embed) still goes through drainDirty.
+  //
+  // Returns true if the path is genuinely new/changed and belongs in
+  // the dirty Set. Returns false for "already-cached" paths — those
+  // are atomic-move arrivals (Finder drag, mv, save-replace) where
+  // mtime + size match the existing sources row, so an ingest would
+  // immediately return skipped-cached and clutter the pending count
+  // for no reason.
+  const reconcileOnAdd = (absent: string): boolean => {
     try {
       const dbX = openDb();
       try {
         const src = getSource(dbX, absent);
-        if (src?.missing_since != null) clearMissing(dbX, absent);
+        if (!src) return true; // never indexed → needs ingest
+        // File came back after grace period stamped it missing.
+        // Clear the flag so the "missing" counter drops.
+        if (src.missing_since != null) clearMissing(dbX, absent);
+        // mtime + size match the row we already have → cached.
+        // No ingest needed; tell caller not to mark dirty.
+        let stat: ReturnType<typeof statSync> | null = null;
+        try { stat = statSync(absent); } catch {}
+        if (
+          stat &&
+          src.mtime_ms != null &&
+          src.mtime_ms === stat.mtimeMs &&
+          src.size_bytes === stat.size
+        ) {
+          return false;
+        }
+        return true;
       } finally {
         dbX.close();
       }
-    } catch {}
+    } catch {
+      return true; // be conservative if the DB hit fails
+    }
   };
 
   watcher
     .on("add", (p) => {
       const absent = resolve(p);
-      entry.dirty.add(absent);
-      // If a previous unlink stamped this path missing (file moved
-      // away and now came back), drop the missing flag immediately
-      // so the user doesn't see a stale "1 missing" count next to a
-      // file that's clearly there. The ingest path will run later
-      // via drainDirty (and skipped-cached if mtime/size match).
-      reconcileOnAdd(absent);
-      scheduleDrain();
+      // Cancel a pending "stamp this missing" timer — atomic moves
+      // (mv, drag-and-drop within Finder, editor save-replace) fire
+      // unlink + add within milliseconds and shouldn't flicker
+      // through a missing state.
+      const t = entry.pendingMissing.get(absent);
+      if (t) {
+        clearTimeout(t);
+        entry.pendingMissing.delete(absent);
+      }
+      // Check cached state. If the file is already indexed and its
+      // (mtime, size) match the sources row, this is a no-op arrival
+      // and shouldn't appear as "change pending." Otherwise queue it
+      // for the normal debounce + drain.
+      const needsIngest = reconcileOnAdd(absent);
+      if (needsIngest) {
+        entry.dirty.add(absent);
+        scheduleDrain();
+      }
     })
     .on("change", (p) => {
       entry.dirty.add(resolve(p));
       scheduleDrain();
     })
     .on("unlink", (p) => {
-      // We don't stamp missing_since here — the user might still be
-      // mid-move and the periodic pass owns that decision. But we
-      // DO drop the path from the dirty set so the "N change pending"
-      // header isn't claiming a pending change against a file that
-      // no longer exists. If the file comes back via .on("add") it
-      // gets re-added cleanly.
       const absent = resolve(p);
+      // Path is gone; drop any pending ingest for it.
       entry.dirty.delete(absent);
+      // Schedule the missing stamp. Three-second grace gives an
+      // atomic move room to fire add() and cancel this timer; long
+      // enough to absorb iCloud / Spotlight churn, short enough that
+      // a real delete shows up in the UI promptly.
+      // Cancel any previous timer for this path first (rapid unlink
+      // → add → unlink edge case).
+      const prev = entry.pendingMissing.get(absent);
+      if (prev) clearTimeout(prev);
+      const t = setTimeout(() => {
+        entry.pendingMissing.delete(absent);
+        try {
+          const dbX = openDb();
+          try {
+            markSourceMissing(dbX, absent, Date.now());
+          } finally {
+            dbX.close();
+          }
+        } catch {}
+      }, UNLINK_TO_MISSING_GRACE_MS);
+      entry.pendingMissing.set(absent, t);
     })
     .on("error", (e) => console.error(`[watcher] ${root.path}:`, e));
 
@@ -299,6 +361,10 @@ export async function stopWatching(path: string): Promise<void> {
   if (!entry) return;
   if (entry.debounceTimer) clearTimeout(entry.debounceTimer);
   if (entry.periodicTimer) clearInterval(entry.periodicTimer);
+  // Drop any pending unlink-grace timers so they don't stamp
+  // missing on rows under a root the user just stopped watching.
+  for (const t of entry.pendingMissing.values()) clearTimeout(t);
+  entry.pendingMissing.clear();
   await entry.watcher.close();
   active.delete(path);
   console.log(`[watcher] stopped ${path}`);
